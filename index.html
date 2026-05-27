@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>Ipon Tracker 🇵🇭</title>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Ipon Tracker"/>
+<meta name="theme-color" content="#1b4d35"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=DM+Sans:wght@400;500;600;700&display=swap"/>
+<script>
+(function(){var c=document.createElement('canvas');c.width=c.height=180;var x=c.getContext('2d');x.fillStyle='#1b4d35';x.beginPath();if(x.roundRect)x.roundRect(0,0,180,180,36);else x.rect(0,0,180,180);x.fill();x.fillStyle='#fff';x.font='bold 96px Georgia';x.textAlign='center';x.textBaseline='middle';x.fillText('₱',90,94);var l=document.createElement('link');l.rel='apple-touch-icon';l.href=c.toDataURL();document.head.appendChild(l);})();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#1b4d35;-webkit-font-smoothing:antialiased}
+body{font-family:'DM Sans',system-ui,sans-serif;color:#3a2818;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+::-webkit-scrollbar{display:none}
+input,select,button,textarea{font-family:inherit}
+input:focus,select:focus{outline:2px solid #1b4d35;outline-offset:1px;border-radius:8px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:3px;background:#e2d9ce;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#1b4d35;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#app{max-width:480px;margin:0 auto;min-height:100vh;background:#f7f3ee}
+/* SETUP */
+.setup{min-height:100vh;background:linear-gradient(160deg,#1b4d35,#2a6645 55%,#1a3d28);display:flex;flex-direction:column;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 44px) 24px 44px;max-width:480px;margin:0 auto}
+.s-logo{width:76px;height:76px;background:rgba(255,255,255,.13);border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:42px;margin-bottom:16px;border:1.5px solid rgba(255,255,255,.18)}
+.s-title{font-family:'Lora',Georgia,serif;font-size:28px;font-weight:600;color:#fff;margin-bottom:4px;text-align:center}
+.s-sub{font-size:13px;color:rgba(255,255,255,.6);text-align:center;margin-bottom:30px;line-height:1.6}
+.s-card{background:#fff;border-radius:20px;padding:22px 18px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.28)}
+.s-ct{font-family:'Lora',Georgia,serif;font-size:18px;font-weight:600;color:#3a2818;margin-bottom:4px}
+.s-cs{font-size:12px;color:#8a7260;line-height:1.6;margin-bottom:16px}
+.s-steps{background:#f7f3ee;border-radius:11px;padding:11px 13px;margin-bottom:14px}
+.s-step{display:flex;align-items:flex-start;gap:8px;padding:3px 0}
+.s-sn{width:20px;height:20px;background:#1b4d35;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;margin-top:2px}
+.s-st{font-size:12px;color:#3a2818;line-height:1.5}
+.s-st a{color:#1b4d35;font-weight:700;text-decoration:none}
+.siw{position:relative;margin-bottom:11px}
+.sinp{width:100%;padding:11px 42px 11px 12px;border-radius:9px;border:2px solid #e2d9ce;font-size:13.5px;color:#3a2818;background:#fff;transition:border-color .2s;font-family:'DM Sans',sans-serif}
+.sinp:focus{border-color:#1b4d35;outline:none}
+.s-eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:#8a7260;padding:4px}
+.s-btn{width:100%;padding:12px;background:#1b4d35;color:#fff;border:none;border-radius:9px;font-size:14.5px;font-weight:700;cursor:pointer}
+.s-btn:active{opacity:.8}
+.s-btn:disabled{opacity:.45;cursor:not-allowed}
+.s-note{font-size:10.5px;color:#8a7260;text-align:center;margin-top:11px;line-height:1.6}
+.s-err{background:#fdecea;color:#b83030;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:11px;border:1px solid #f5c2c2;line-height:1.5}
+/* DRAWER */
+.drawer{position:fixed;top:0;left:-285px;width:285px;height:100dvh;height:100%;background:#fff;z-index:200;transition:left .25s ease;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.drawer.open{left:0;box-shadow:6px 0 30px rgba(0,0,0,.2)}
+.dov{position:fixed;inset:0;background:rgba(0,0,0,.44);z-index:190;opacity:0;pointer-events:none;transition:opacity .25s}
+.dov.show{opacity:1;pointer-events:all}
+.dr-hdr{background:linear-gradient(135deg,#1b4d35,#2a6645);padding:22px 18px 18px}
+.dr-title{font-family:'Lora',Georgia,serif;font-size:18px;font-weight:600;color:#fff}
+.dr-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:2px}
+.dr-items{flex:1;overflow-y:auto;padding:8px 0}
+.dr-item{display:flex;align-items:center;gap:12px;padding:12px 18px;cursor:pointer;transition:background .15s;border:none;background:none;width:100%;text-align:left}
+.dr-item:active{background:#f7f3ee}
+.dr-item-icon{font-size:20px;width:26px;text-align:center}
+.dr-item-lbl{font-size:14px;font-weight:600;color:#3a2818}
+.dr-item-sub{font-size:11px;color:#8a7260;margin-top:1px}
+.dr-sep{height:1px;background:#f0e8de;margin:6px 0}
+.dr-item-active .dr-item-lbl{color:#1b4d35}
+/* HEADER */
+.hdr{background:linear-gradient(135deg,#1b4d35,#2a6645);position:sticky;top:0;z-index:30;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 11px}
+.hrow{display:flex;align-items:center;gap:10px}
+.h-menu{background:none;border:none;color:rgba(255,255,255,.9);font-size:21px;cursor:pointer;padding:3px 5px;flex-shrink:0;line-height:1}
+.h-mid{flex:1;min-width:0}
+.htitle{font-family:'Lora',Georgia,serif;font-size:19px;font-weight:600;color:#fff;white-space:nowrap}
+.hsub{font-size:10.5px;color:rgba(255,255,255,.52);margin-top:1px}
+.h-bal{text-align:right;flex-shrink:0}
+.hbl{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px}
+.hbv{font-family:'Lora',Georgia,serif;font-size:21px;font-weight:600;color:#fff}
+/* TAB BAR */
+.tabbar{display:flex;background:#fff;border-top:1px solid #e2d9ce;position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:30;padding-bottom:env(safe-area-inset-bottom,0px)}
+.tb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 1px 4px;background:none;border:none;border-top:2.5px solid transparent;cursor:pointer;color:#8a7260;gap:1px;transition:color .15s}
+.tb-on{border-top-color:#1b4d35;color:#1b4d35}
+.tb-ic{font-size:18px;line-height:1}
+.tb-lb{font-size:8.5px;font-weight:400}
+.tb-lb-on{font-weight:800}
+/* LAYOUT */
+.sec{padding:12px 12px 0}
+.card{background:#fff;border-radius:12px;border:1px solid #e2d9ce;margin-bottom:9px;overflow:hidden}
+.cp{padding:11px 13px}
+.cr{padding:7px 13px}
+.cg{background:linear-gradient(135deg,#1b4d35,#2a6645);border:none}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row{display:flex;justify-content:space-between;align-items:center}
+/* TYPOGRAPHY */
+.lbl{font-size:10px;font-weight:700;color:#8a7260;text-transform:uppercase;letter-spacing:.6px}
+.lblw{font-size:10px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px}
+.sf{font-family:'Lora',Georgia,serif;font-weight:600}
+.muted{color:#8a7260}
+.danger-c{color:#b83030}
+.green-c{color:#2e6e4f}
+.amber-c{color:#b8720c}
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;transition:opacity .15s}
+.btn:active{opacity:.72}
+.bp{background:#1b4d35;color:#fff;padding:10px 15px;font-size:13px}
+.ba{background:#b8720c;color:#fff;padding:10px 15px;font-size:13px}
+.bg{background:transparent;color:#1b4d35;border:1.5px solid #1b4d35;padding:9px 15px;font-size:13px}
+.bsm{background:#1b4d35;color:#fff;padding:5px 10px;font-size:11px;border-radius:7px}
+.bgsm{background:transparent;color:#8a7260;border:1px solid #e2d9ce;padding:5px 10px;font-size:11px;border-radius:7px}
+.bfull{width:100%;padding:12px;font-size:14px}
+.bgfull{width:100%;padding:11px;font-size:13.5px;background:transparent;color:#1b4d35;border:1.5px solid #1b4d35;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;display:flex;align-items:center;justify-content:center}
+.del{background:none;border:none;cursor:pointer;color:#c4a99a;font-size:18px;padding:0 2px;line-height:1;flex-shrink:0}
+/* FORM */
+.fg{margin-bottom:9px}
+.fl{display:block;font-size:10px;font-weight:700;color:#8a7260;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px}
+.inp{width:100%;padding:9px 10px;border-radius:8px;border:1.5px solid #e2d9ce;font-size:13.5px;color:#3a2818;background:#fff;box-sizing:border-box}
+.sel{width:100%;padding:9px 10px;border-radius:8px;border:1.5px solid #e2d9ce;font-size:13.5px;color:#3a2818;background:#fff;box-sizing:border-box}
+/* MODAL */
+.mbg{position:fixed;inset:0;background:rgba(10,5,0,.58);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.mbox{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:480px;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow-y:auto}
+.mt{font-family:'Lora',Georgia,serif;font-size:18px;font-weight:600;margin-bottom:13px;color:#3a2818}
+.mr{display:flex;gap:7px;margin-top:12px}
+/* SWIPE ROWS */
+.sw{position:relative;overflow:hidden}
+.swc{position:relative;z-index:1;background:#fff;transition:transform .15s ease;will-change:transform}
+.swa{position:absolute;right:0;top:0;bottom:0;display:flex;z-index:0}
+.sw-edit{width:62px;background:#2e6e4f;color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.sw-del{width:62px;background:#b83030;color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+/* MISC */
+.chips{display:flex;gap:5px;overflow-x:auto;padding-bottom:7px;margin-bottom:8px}
+.chip{white-space:nowrap;padding:5px 11px;border-radius:18px;font-size:11px;cursor:pointer;border:1.5px solid #e2d9ce;background:#fff;color:#3a2818;font-family:'DM Sans',sans-serif}
+.chip-on{background:#1b4d35;color:#fff;border-color:#1b4d35;font-weight:700}
+.empty{padding:30px;text-align:center;color:#8a7260;font-size:13px}
+.tag-c{font-size:9px;background:#1b4d35;color:#fff;padding:2px 6px;border-radius:9px;font-weight:800}
+.bw{display:flex;gap:4px;align-items:flex-end;height:66px}
+.bc{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.bbg{width:100%;background:#ede6dc;border-radius:4px;height:48px;display:flex;align-items:flex-end;overflow:hidden;margin-bottom:2px}
+.bf{width:100%;border-radius:4px;transition:height .4s}
+.rbar{height:6px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
+.rf{height:100%;border-radius:3px;transition:width .5s}
+.si{width:100%;border-radius:8px;margin-bottom:8px;max-height:190px;object-fit:cover;display:block}
+.aerr{background:#fdecea;color:#b83030;font-size:12px;padding:10px 13px;border-radius:10px;margin-bottom:8px;line-height:1.5;border:1px solid #f5c2c2}
+.tip-r{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #e2d9ce;align-items:flex-start}
+.tip-r:last-child{border-bottom:none}
+.bdg{display:inline-block;font-size:9px;font-weight:800;padding:1px 6px;border-radius:8px;letter-spacing:.2px}
+.bdg-f{background:#e6f3ec;color:#1b4d35}
+.bdg-h{background:#e8f0fe;color:#1a56c4}
+.bdg-a{background:#fff3e0;color:#e65100}
+.bdg-b{background:#fef3dc;color:#b8720c}
+/* REPORT BARS */
+.rpt-bar-row{display:flex;align-items:center;gap:8px;padding:5px 0}
+.rpt-bar-label{font-size:11.5px;color:#3a2818;font-weight:600;width:120px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rpt-bar-track{flex:1;height:8px;background:#ede6dc;border-radius:4px;overflow:hidden}
+.rpt-bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.rpt-bar-val{font-size:11.5px;font-weight:700;color:#3a2818;width:68px;text-align:right;flex-shrink:0}
+/* STOCK STATUS */
+.s-ok{background:#e6f3ec;color:#1b4d35;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800}
+.s-low{background:#fef3dc;color:#b8720c;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800}
+.s-out{background:#fdecea;color:#b83030;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800}
+.qty-btn{width:28px;height:28px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff;font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#3a2818;flex-shrink:0}
+.qty-btn:active{background:#f0e8de}
+/* QUOTA TIP */
+.qtip{background:#fef3dc;border:1px solid #f0d080;border-radius:10px;padding:11px 13px;margin-bottom:11px;font-size:12px;color:#6b4c36;line-height:1.65}
+.qtip strong{color:#b8720c}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ─── CONSTANTS ───────────────────────────────────────────────
+const SK='ipon-v5', GK='ipon-gkey';
+const MODELS=['gemini-2.0-flash-lite','gemini-2.0-flash'];
+const FSRC=['Carinderia','Palengke/Home-cooked','Grab/Delivery','Fast Food','Restaurant','Sari-sari store','Others'];
+const STORES=['Palengke','Supermarket','Puregold','SM Savemore','Robinsons','Shopee/Lazada','Sari-sari','Others'];
+const FCATS=['Ulam (Viand)','Vegetables','Rice & Grains','Snacks','Drinks','Condiments & Sauces','Others'];
+const HCATS=['Cleaning Supplies','Toiletries & Personal Care','Laundry','Kitchen Supplies','Bedding & Linen','Medicine & First Aid','Others'];
+const SCATS=['Food Staples','Cleaning','Toiletries','Medicine','Condiments','Kitchen','Others'];
+const UNITS=['pcs','kg','g','pack','can','bottle','bundle','sachet','box','litre','roll','pair','tali'];
+const fmt=n=>'₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0});
+const toStr=()=>new Date().toISOString().split('T')[0];
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const mk=d=>{const dt=d?new Date(d+'T12:00:00'):new Date();return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;};
+const mklbl=k=>{const[y,m]=k.split('-');return new Date(y,m-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});};
+const curMk=()=>mk();
+const INIT={balance:130000,transactions:[],homeExpenses:[],priceItems:[],stocks:[],bills:[{id:'b1',name:'Electricity',monthlyAmounts:{},paid:{}},{id:'b2',name:'WiFi / Internet',monthlyAmounts:{},paid:{}}],dailyBudget:380,
+  airconUsage:[],meralcoRate:12.03,airconStartupKwh:1.2,airconRunningKwh:0.75};
+function ld(){try{const s=localStorage.getItem(SK);if(s){const d=JSON.parse(s);if(!d.stocks)d.stocks=[];if(!d.homeExpenses)d.homeExpenses=[];
+  if(!d.airconUsage)d.airconUsage=[];if(!d.meralcoRate)d.meralcoRate=12.03;
+  if(!d.airconStartupKwh)d.airconStartupKwh=1.2;if(!d.airconRunningKwh)d.airconRunningKwh=0.75;
+  return d;}}catch{}return JSON.parse(JSON.stringify(INIT));}
+function sd(d){try{localStorage.setItem(SK,JSON.stringify(d));}catch{}}
+function lk(){return localStorage.getItem(GK)||'';}
+function sk(k){k?localStorage.setItem(GK,k):localStorage.removeItem(GK);}
+
+// ─── STATE ───────────────────────────────────────────────────
+let S={
+  tab:'dash',data:ld(),geminiKey:lk(),drawerOpen:false,
+  modal:null,viewMk:curMk(),billsMk:curMk(),
+  // setup
+  setupInput:'',setupErr:'',setupLoading:false,setupShow:false,
+  // forms
+  txF:{amount:'',source:'Carinderia',note:'',date:toStr()},
+  homeF:{amount:'',category:'Cleaning Supplies',name:'',store:'Supermarket',note:'',date:toStr()},
+  priceF:{name:'',store:'Palengke',price:'',unit:'pcs',category:'Food',subcat:'Ulam (Viand)',note:''},
+  stockF:{name:'',category:'Food Staples',quantity:'',unit:'pcs',minQty:'1',note:''},
+  airconF:{date:toStr(),hours:''},
+  airSetF:{rate:'',startup:'',running:''},
+  billF:{name:''},
+  balInput:'',
+  // scan
+  scanImg:null,scanMime:'',scanning:false,scanData:null,scanErr:'',addedIdx:new Set(),
+  // filters
+  pCat:'All',pSearch:'',homeCat:'All',stockCat:'All',stockStatus:'All',
+  // edit
+  editType:null,editId:null,editDraft:null,
+  // bill drafts (no re-render on type)
+  billDraft:{},
+  // reports
+  rptMk:curMk(),
+};
+let openSw=null;
+function set(p){if(typeof p==='function')Object.assign(S,p(S));else Object.assign(S,p);render();}
+function setD(fn){const d=fn(S.data);sd(d);S.data=d;render();}
+
+// ─── ACTIONS ────────────────────────────────────────────────
+function addTx(){
+  const amt=parseFloat(S.txF.amount);if(!amt||amt<=0)return;
+  const tx={id:uid(),amount:amt,source:S.txF.source,note:S.txF.note,date:S.txF.date};
+  setD(d=>({...d,balance:d.balance-amt,transactions:[tx,...d.transactions]}));
+  set({txF:{amount:'',source:'Carinderia',note:'',date:toStr()},modal:null});
+}
+function delTx(id){const tx=S.data.transactions.find(t=>t.id===id);if(!tx)return;setD(d=>({...d,balance:d.balance+tx.amount,transactions:d.transactions.filter(t=>t.id!==id)}));}
+function addHome(){
+  const amt=parseFloat(S.homeF.amount);if(!amt||!S.homeF.name)return;
+  const item={id:uid(),amount:amt,category:S.homeF.category,name:S.homeF.name,store:S.homeF.store,note:S.homeF.note,date:S.homeF.date};
+  setD(d=>({...d,balance:d.balance-amt,homeExpenses:[item,...(d.homeExpenses||[])]}));
+  set({homeF:{amount:'',category:'Cleaning Supplies',name:'',store:'Supermarket',note:'',date:toStr()},modal:null});
+}
+function delHome(id){const e=(S.data.homeExpenses||[]).find(x=>x.id===id);if(!e)return;setD(d=>({...d,balance:d.balance+e.amount,homeExpenses:(d.homeExpenses||[]).filter(x=>x.id!==id)}));}
+function addPrice(){
+  const price=parseFloat(S.priceF.price);if(!S.priceF.name||!price)return;
+  setD(d=>({...d,priceItems:[...d.priceItems,{id:uid(),...S.priceF,price,addedAt:new Date().toISOString()}]}));
+  set({priceF:{name:'',store:'Palengke',price:'',unit:'pcs',category:'Food',subcat:'Ulam (Viand)',note:''},modal:null});
+}
+function delPrice(id){setD(d=>({...d,priceItems:d.priceItems.filter(p=>p.id!==id)}));}
+function addStock(){
+  if(!S.stockF.name)return;
+  const item={id:uid(),name:S.stockF.name,category:S.stockF.category,quantity:parseFloat(S.stockF.quantity)||0,unit:S.stockF.unit||'pcs',minQty:parseFloat(S.stockF.minQty)||1,note:S.stockF.note};
+  setD(d=>({...d,stocks:[...(d.stocks||[]),item]}));
+  set({stockF:{name:'',category:'Food Staples',quantity:'',unit:'pcs',minQty:'1',note:''},modal:null});
+}
+function delStock(id){setD(d=>({...d,stocks:(d.stocks||[]).filter(s=>s.id!==id)}));}
+function adjStock(id,delta){setD(d=>({...d,stocks:(d.stocks||[]).map(s=>s.id===id?{...s,quantity:Math.max(0,s.quantity+delta)}:s)}));}
+function addAircon(){
+  const h=parseFloat(S.airconF.hours);if(!h||h<=0)return;
+  const d=S.data;const startup=d.airconStartupKwh,running=d.airconRunningKwh;
+  const totalKwh=h<=1?(h*startup):(startup+(h-1)*running);
+  const cost=totalKwh*d.meralcoRate;
+  const entry={id:uid(),date:S.airconF.date,hours:h,kwh:totalKwh,cost,rateAtTime:d.meralcoRate};
+  setD(d=>({...d,balance:d.balance-cost,airconUsage:[entry,...(d.airconUsage||[])]}));
+  set({airconF:{date:toStr(),hours:''},modal:null});
+}
+function delAircon(id){const e=S.data.airconUsage.find(x=>x.id===id);if(!e)return;setD(d=>({...d,balance:d.balance+e.cost,airconUsage:d.airconUsage.filter(x=>x.id!==id)}));}
+function saveAirSet(){
+  setD(d=>({...d,meralcoRate:parseFloat(S.airSetF.rate)||d.meralcoRate,airconStartupKwh:parseFloat(S.airSetF.startup)||d.airconStartupKwh,airconRunningKwh:parseFloat(S.airSetF.running)||d.airconRunningKwh}));
+  set({modal:null});
+}
+function exportData(){
+  const blob=new Blob([JSON.stringify(S.data,null,2)],{type:'application/json'});
+  const a=h('a',{href:URL.createObjectURL(blob),download:`ipon-tracker-${toStr()}.json`});
+  a.click();
+}
+function importData(e){
+  const reader=new FileReader();reader.onload=ev=>{
+    try{const d=JSON.parse(ev.target.result);if(confirm('Overwrite current data?')){sd(d);S.data=d;render();alert('Imported!');}}
+    catch{alert('Invalid file');}
+  };reader.readAsText(e.target.files[0]);
+}
+function setBillAmt(id,m,val){setD(d=>({...d,bills:d.bills.map(b=>b.id===id?{...b,monthlyAmounts:{...b.monthlyAmounts,[m]:parseFloat(val)||0}}:b)}));}
+function toggleBillPaid(id,m){setD(d=>({...d,bills:d.bills.map(b=>b.id===id?{...b,paid:{...b.paid,[m]:!b.paid[m]}}:b)}));}
+function addBill(){if(!S.billF.name)return;setD(d=>({...d,bills:[...d.bills,{id:uid(),name:S.billF.name,monthlyAmounts:{},paid:{}}]}));set({billF:{name:''},modal:null});}
+function delBill(id){setD(d=>({...d,bills:d.bills.filter(b=>b.id!==id)}));}
+function updBal(){const v=parseFloat(S.balInput.replace(/,/g,''));if(!isNaN(v)){setD(d=>({...d,balance:v}));set({modal:null});}}
+function openEdit(type,id){
+  let item;
+  if(type==='food')item=S.data.transactions.find(t=>t.id===id);
+  else if(type==='home')item=(S.data.homeExpenses||[]).find(e=>e.id===id);
+  else if(type==='aircon')item=(S.data.airconUsage||[]).find(e=>e.id===id);
+  else if(type==='price')item=S.data.priceItems.find(p=>p.id===id);
+  else if(type==='stock')item=(S.data.stocks||[]).find(s=>s.id===id);
+  if(!item)return;
+  set({modal:'edit',editType:type,editId:id,editDraft:{...item}});
+}
+function saveEdit(){
+  const{editType:t,editId:id,editDraft:dr}=S;
+  if(t==='food'){
+    const old=S.data.transactions.find(x=>x.id===id);
+    const newAmt=parseFloat(dr.amount)||old.amount;
+    const delta=newAmt-old.amount;
+    setD(d=>({...d,balance:d.balance-delta,transactions:d.transactions.map(x=>x.id===id?{...x,...dr,amount:newAmt}:x)}));
+  } else if(t==='home'){
+    const old=(S.data.homeExpenses||[]).find(x=>x.id===id);
+    const newAmt=parseFloat(dr.amount)||old.amount;
+    const delta=newAmt-old.amount;
+    setD(d=>({...d,balance:d.balance-delta,homeExpenses:(d.homeExpenses||[]).map(x=>x.id===id?{...x,...dr,amount:newAmt}:x)}));
+  } else if(t==='aircon'){
+    const old=(S.data.airconUsage||[]).find(x=>x.id===id);
+    const newHours=parseFloat(dr.hours)||old.hours;
+    const totalKwh=newHours<=1?(newHours*S.data.airconStartupKwh):(S.data.airconStartupKwh+(newHours-1)*S.data.airconRunningKwh);
+    const newCost=totalKwh*S.data.meralcoRate;
+    setD(d=>({...d,balance:d.balance+old.cost-newCost,airconUsage:(d.airconUsage||[]).map(x=>x.id===id?{...x,...dr,hours:newHours,kwh:totalKwh,cost:newCost}:x)}));
+  } else if(t==='price'){
+    setD(d=>({...d,priceItems:d.priceItems.map(p=>p.id===id?{...p,...dr,price:parseFloat(dr.price)||p.price}:p)}));
+  } else if(t==='stock'){
+    setD(d=>({...d,stocks:(d.stocks||[]).map(s=>s.id===id?{...s,...dr,quantity:parseFloat(dr.quantity)||0,minQty:parseFloat(dr.minQty)||0}:s)}));
+  }
+  set({modal:null,editType:null,editId:null,editDraft:null});
+}
+
+// ─── GEMINI ─────────────────────────────────────────────────
+async function setupKey(){
+  const key=S.setupInput.trim();
+  if(!key){set({setupErr:'Please enter your API key.'});return;}
+  if(!key.startsWith('AIza')){set({setupErr:'Key should start with "AIza..." — check you copied it fully.'});return;}
+  set({setupLoading:true,setupErr:''});
+  try{
+    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELS[0]}:generateContent?key=${key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'hi'}]}],generationConfig:{maxOutputTokens:3}})});
+    const json=await res.json();
+    if(json.error){
+      const code=json.error.code,msg=(json.error.message||'').toLowerCase();
+      const isBad=msg.includes('api key not valid')||msg.includes('invalid api key')||(code===400&&msg.includes('key'))||code===401;
+      if(isBad){set({setupErr:'Invalid API key. Make sure you copied the full key from AI Studio.',setupLoading:false});return;}
+      // quota/other errors = key is valid
+    }
+    sk(key);set({geminiKey:key,setupInput:'',setupErr:'',setupLoading:false});
+  }catch(e){
+    const msg=(e.message||'').toLowerCase();
+    if(msg.includes('api key not valid')||msg.includes('invalid')){set({setupErr:'Invalid API key.',setupLoading:false});return;}
+    sk(key);set({geminiKey:key,setupInput:'',setupErr:'',setupLoading:false});
+  }
+}
+async function doScan(){
+  if(!S.scanImg||!S.geminiKey)return;
+  set({scanning:true,scanErr:'',scanData:null});
+  for(const model of MODELS){
+    try{
+      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${S.geminiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:S.scanMime,data:S.scanImg}},{text:'Analyze this image from the Philippines (receipt, price tag, shelf, palengke sign, menu). Extract ALL items with Philippine Peso prices.\n\nReturn ONLY a raw JSON array, no markdown:\n[{"name":"item","price":45.00,"unit":"kg/pcs/pack/etc","store":"infer or Unknown","category":"Food or Home","subcat":"Ulam (Viand) or Vegetables or Rice & Grains or Snacks or Drinks or Condiments & Sauces or Cleaning Supplies or Toiletries & Personal Care or Laundry or Kitchen Supplies or Others","note":"optional"}]\n\nIf no prices found, return: []'}]}],generationConfig:{temperature:0.1,maxOutputTokens:1200}})});
+      const json=await res.json();
+      if(json.error){const msg=(json.error.message||'').toLowerCase();if(json.error.code===429||msg.includes('quota')||msg.includes('resource_exhausted')||msg.includes('exceeded'))continue;throw new Error(json.error.message);}
+      const raw=json.candidates?.[0]?.content?.parts?.[0]?.text||'[]';
+      set({scanData:JSON.parse(raw.replace(/```json|```/g,'').trim()),scanning:false});return;
+    }catch(e){
+      const msg=(e.message||'').toLowerCase();
+      if(msg.includes('quota')||msg.includes('resource_exhausted')||msg.includes('exceeded'))continue;
+      set({scanErr:'Scan error: '+e.message,scanning:false});return;
+    }
+  }
+  set({scanErr:'All Gemini models are quota-limited right now. Wait 1–2 minutes and try again. (Free tier: ~15 scans/min, ~1,500/day)',scanning:false});
+}
+function addScanned(item,idx){
+  setD(d=>({...d,priceItems:[...d.priceItems,{id:uid(),name:item.name,store:item.store||'Unknown',price:item.price,unit:item.unit||'pcs',category:item.category||'Food',subcat:item.subcat||'Others',note:item.note||'From scan',addedAt:new Date().toISOString()}]}));
+  S.addedIdx=new Set([...S.addedIdx,idx]);render();
+}
+
+// ─── DOM HELPERS ─────────────────────────────────────────────
+function h(tag,attrs,...ch){
+  const el=document.createElement(tag);
+  if(attrs)for(const[k,v]of Object.entries(attrs)){
+    if(k==='cls')el.className=v;
+    else if(k.startsWith('on')&&typeof v==='function')el.addEventListener(k.slice(2).toLowerCase(),v);
+    else if(k==='style'&&typeof v==='object')Object.assign(el.style,v);
+    else if(v!=null&&v!==false)el.setAttribute(k,v);
+  }
+  for(const c of ch.flat(Infinity)){if(c==null||c===false)continue;if(typeof c==='string'||typeof c==='number')el.appendChild(document.createTextNode(String(c)));else if(c instanceof Node)el.appendChild(c);}
+  return el;
+}
+const D=(cls,...c)=>h('div',{cls},...c);
+const Sp=(cls,t)=>h('span',{cls},t);
+const Btn=(cls,t,fn,dis)=>h('button',{cls:'btn '+cls,onClick:fn,...(dis?{disabled:true}:{})},t);
+const Inp=(cls,opts)=>h('input',{cls:'inp '+cls,...opts});
+const Sel=(val,opts,fn,cls='')=>{const el=h('select',{cls:'sel '+cls});opts.forEach(o=>{const op=h('option',{value:o},o);if(o===val)op.selected=true;el.appendChild(op);});el.addEventListener('change',e=>fn(e.target.value));return el;};
+const Fg=(lbl,el)=>{const f=D('fg');f.appendChild(h('label',{cls:'fl'},lbl));f.appendChild(el);return f;};
+const Mr=(...bs)=>{const r=D('mr');bs.forEach(b=>r.appendChild(b));return r;};
+const DivHdr=(t)=>{const d=D('');d.style.cssText='padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';d.appendChild(h('span',{style:'font-weight:700;font-size:13px'},t));return d;};
+
+// ─── SWIPE ROWS ──────────────────────────────────────────────
+function closeSwipe(){if(openSw){const c=openSw.querySelector('.swc');if(c)c.style.transform='';openSw=null;}}
+function swRow(content,onEdit,onDel){
+  const wrap=D('sw');
+  const acts=D('swa');
+  if(onEdit){const eb=h('button',{cls:'sw-edit',onClick:(e)=>{e.stopPropagation();closeSwipe();onEdit();}});eb.innerHTML='✏️<span style="font-size:10px">Edit</span>';acts.appendChild(eb);}
+  const db=h('button',{cls:'sw-del',onClick:(e)=>{e.stopPropagation();closeSwipe();onDel();}});db.innerHTML='🗑️<span style="font-size:10px">Delete</span>';acts.appendChild(db);
+  const sc=D('swc');sc.appendChild(content);
+  wrap.appendChild(acts);wrap.appendChild(sc);
+  const AW=onEdit?124:62;
+  let sx=0,sy=0,gk=false,ih=false;
+  sc.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY;gk=false;ih=false;sc.style.transition='none';},{passive:true});
+  sc.addEventListener('touchmove',e=>{
+    const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
+    if(!gk&&(Math.abs(dx)>4||Math.abs(dy)>4)){ih=Math.abs(dx)>Math.abs(dy);gk=true;}
+    if(!ih)return;
+    e.preventDefault();
+    const isOpen=openSw===wrap;
+    const base=isOpen?-AW:0;
+    const off=Math.max(Math.min(base+dx,0),-AW);
+    sc.style.transform=`translateX(${off}px)`;
+    if(dx<0&&openSw&&openSw!==wrap)closeSwipe();
+  },{passive:false});
+  sc.addEventListener('touchend',e=>{
+    if(!ih)return;
+    sc.style.transition='transform .15s ease';
+    const dx=e.changedTouches[0].clientX-sx;
+    const isOpen=openSw===wrap;
+    if(!isOpen&&dx<-40){sc.style.transform=`translateX(-${AW}px)`;openSw=wrap;}
+    else if(isOpen&&dx>40){sc.style.transform='';openSw=null;}
+    else if(!isOpen){sc.style.transform='';}
+    else{sc.style.transform=`translateX(-${AW}px)`;}
+  },{passive:true});
+  return wrap;
+}
+
+// ─── COMPUTED ────────────────────────────────────────────────
+function calc(){
+  const data=S.data,now=new Date(),cm=curMk();
+  const bTotal=data.bills.reduce((s,b)=>s+(b.monthlyAmounts[cm]||0),0);
+  const bUnpaid=data.bills.filter(b=>!b.paid[cm]).reduce((s,b)=>s+(b.monthlyAmounts[cm]||0),0);
+  const d7=new Date(now.getTime()-7*86400000);
+  const rec=data.transactions.filter(t=>new Date(t.date)>=d7);
+  const avgD=rec.length?rec.reduce((s,t)=>s+t.amount,0)/7:data.dailyBudget;
+  const mBurn=bTotal+avgD*30;
+  const runway=mBurn>0?Math.floor(data.balance/(mBurn/30)):9999;
+  const todayS=data.transactions.filter(t=>t.date===toStr()).reduce((s,t)=>s+t.amount,0);
+  const chart=Array.from({length:7},(_,i)=>{const dd=new Date(now.getTime()-(6-i)*86400000),ds=dd.toISOString().split('T')[0];return{label:dd.toLocaleDateString('en-PH',{weekday:'short'}),spend:data.transactions.filter(t=>t.date===ds).reduce((s,t)=>s+t.amount,0),ds};});
+  const maxS=Math.max(...chart.map(x=>x.spend),data.dailyBudget,1);
+  return{bTotal,bUnpaid,avgD,mBurn,runway,todayS,chart,maxS};
+}
+function pGroups(){
+  const f=S.data.priceItems.filter(p=>{const mc=S.pCat==='All'||p.category===S.pCat;const ms=!S.pSearch||p.name.toLowerCase().includes(S.pSearch.toLowerCase());return mc&&ms;});
+  const g=f.reduce((acc,item)=>{const key=item.name.toLowerCase().trim();if(!acc[key])acc[key]={display:item.name,items:[]};acc[key].items.push(item);return acc;},{});
+  Object.values(g).forEach(x=>x.items.sort((a,b)=>a.price-b.price));
+  return Object.values(g).sort((a,b)=>a.display.localeCompare(b.display));
+}
+
+// ─── SETUP ──────────────────────────────────────────────────
+function renderSetup(){
+  const wrap=D('setup');
+  const logo=D('s-logo');logo.textContent='₱';
+  const title=D('s-title');title.textContent='Ipon Tracker';
+  const sub=D('s-sub');sub.textContent='Enter your free Gemini API key to unlock AI price scanning.\nYour key is stored only on your device.';
+  const card=D('s-card');
+  card.appendChild(Object.assign(D('s-ct'),{textContent:'🔑 Gemini API Key (Free)'}));
+  card.appendChild(Object.assign(D('s-cs'),{textContent:'Get a free key from Google AI Studio in about 2 minutes.'}));
+  const steps=D('s-steps');
+  [['1','Go to aistudio.google.com'],['2','Sign in with your Google account'],['3','Click "Get API key" → "Create API key"'],['4','Copy and paste the key below']].forEach(([n,t])=>{
+    const row=D('s-step');const num=D('s-sn');num.textContent=n;const txt=D('s-st');
+    if(n==='1')txt.innerHTML='Go to <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>';
+    else txt.textContent=t;row.appendChild(num);row.appendChild(txt);steps.appendChild(row);
+  });
+  card.appendChild(steps);
+  if(S.setupErr){const err=D('s-err');err.textContent=S.setupErr;card.appendChild(err);}
+  const iw=D('siw');
+  const ki=h('input',{cls:'sinp',type:S.setupShow?'text':'password',placeholder:'Paste key here (AIza...)',value:S.setupInput,autocomplete:'off',autocorrect:'off',autocapitalize:'off'});
+  ki.oninput=e=>{S.setupInput=e.target.value;};
+  ki.addEventListener('keydown',e=>{if(e.key==='Enter')setupKey();});
+  iw.appendChild(ki);iw.appendChild(h('button',{cls:'s-eye',type:'button',onClick:()=>set({setupShow:!S.setupShow})},S.setupShow?'🙈':'👁️'));
+  card.appendChild(iw);
+  card.appendChild(h('button',{cls:'s-btn',onClick:setupKey,...(S.setupLoading?{disabled:true}:{})},S.setupLoading?'⏳ Verifying...':'🚀 Start the App'));
+  card.appendChild(Object.assign(D('s-note'),{innerHTML:'🔒 Stored only in your phone\'s browser storage.<br/>Not shared with anyone.'}));
+  wrap.appendChild(logo);wrap.appendChild(title);wrap.appendChild(sub);wrap.appendChild(card);
+  setTimeout(()=>{try{ki.focus();}catch{}},80);
+  return wrap;
+}
+
+// ─── DRAWER ──────────────────────────────────────────────────
+function renderDrawer(){
+  const drawer=D('drawer'+(S.drawerOpen?' open':''));
+  const dov=D('dov'+(S.drawerOpen?' show':''));
+  dov.onclick=()=>set({drawerOpen:false});
+  const dhdr=D('dr-hdr');dhdr.appendChild(Object.assign(D('dr-title'),{textContent:'Ipon Tracker 🇵🇭'}));dhdr.appendChild(Object.assign(D('dr-sub'),{textContent:'Budget · Prices · Savings'}));drawer.appendChild(dhdr);
+  const items=D('dr-items');
+  const drItem=(icon,lbl,sub,fn,active)=>{
+    const it=h('button',{cls:'dr-item'+(active?' dr-item-active':''),onClick:fn});
+    it.appendChild(Object.assign(D('dr-item-icon'),{textContent:icon}));
+    const tx=D('');tx.appendChild(Object.assign(D('dr-item-lbl'),{textContent:lbl}));if(sub)tx.appendChild(Object.assign(D('dr-item-sub'),{textContent:sub}));it.appendChild(tx);return it;
+  };
+  items.appendChild(drItem('🏠','Overview','Dashboard & balance',()=>set({tab:'dash',drawerOpen:false}),S.tab==='dash'));
+  items.appendChild(drItem('🍽️','Food Expenses','Daily meal tracking',()=>set({tab:'food',drawerOpen:false}),S.tab==='food'));
+  items.appendChild(drItem('🧴','Home & Toiletries','Household spending',()=>set({tab:'home',drawerOpen:false}),S.tab==='home'));
+  items.appendChild(drItem('📋','Bills','Monthly bills tracker',()=>set({tab:'bills',drawerOpen:false}),S.tab==='bills'));
+  items.appendChild(drItem('🏷️','Price Comparison','Track & compare prices',()=>set({tab:'prices',drawerOpen:false}),S.tab==='prices'));
+  items.appendChild(drItem('📸','AI Scanner','Scan receipts & tags',()=>set({tab:'scan',drawerOpen:false}),S.tab==='scan'));
+  items.appendChild(drItem('❄️','Aircon Tracker','Usage & electricity cost',()=>set({tab:'aircon',drawerOpen:false}),S.tab==='aircon'));
+  items.appendChild(D('dr-sep'));
+  items.appendChild(drItem('📊','Reports','Monthly spending breakdown',()=>set({tab:'reports',drawerOpen:false}),S.tab==='reports'));
+  items.appendChild(drItem('📦','Stocks & Inventory','Track what you have at home',()=>set({tab:'stocks',drawerOpen:false}),S.tab==='stocks'));
+  items.appendChild(D('dr-sep'));
+  const exp=drItem('📤','Export Data','Save backup to file',exportData);items.appendChild(exp);
+  const imp=drItem('📥','Import Data','Restore from backup',()=>{
+    const fi=h('input',{type:'file',accept:'.json',onchange:importData});fi.click();
+  });items.appendChild(imp);
+  items.appendChild(D('dr-sep'));
+  items.appendChild(drItem('🔑','Change API Key','Update your Gemini key',()=>{sk('');set({geminiKey:'',setupInput:'',setupErr:'',drawerOpen:false});}));
+  drawer.appendChild(items);
+  const frag=document.createDocumentFragment();frag.appendChild(dov);frag.appendChild(drawer);
+  return frag;
+}
+
+// ─── DASHBOARD ──────────────────────────────────────────────
+function renderDash(){
+  const {bTotal,avgD,mBurn,runway,todayS,chart,maxS}=calc();
+  const airconCost = (S.data.airconUsage || []).filter(u => mk(u.date) === curMk()).reduce((s, u) => s + u.cost, 0);
+  const data=S.data;
+  const rwPct=Math.min((runway/365)*100,100);
+  const rwCol=runway>120?'#6ce0a0':runway>60?'#f6d060':'#f07070';
+  const sec=D('sec');
+  // Balance hero
+  const hero=D('card cg');const hcp=D('cp');
+  const hrow=D('row');hrow.style.marginBottom='9px';
+  const hl=D('');
+  hl.appendChild(Object.assign(D('lblw'),{textContent:'Current Balance'}));
+  const bv=D('sf');bv.style.cssText='font-size:33px;color:#fff;display:block;line-height:1.05;margin:2px 0';bv.textContent=fmt(data.balance);
+  const bs=D('');bs.style.cssText='font-size:11px;color:rgba(255,255,255,.55);margin-top:2px';bs.textContent=`~${(runway/30).toFixed(1)} months · ${runway} days runway`;
+  hl.appendChild(bv);hl.appendChild(bs);
+  const eb=h('button',{cls:'btn bg',style:'color:rgba(255,255,255,.85);border-color:rgba(255,255,255,.25);padding:5px 10px;font-size:11px',onClick:()=>set({balInput:String(data.balance),modal:'editBal'})},'Edit ✏️');
+  hrow.appendChild(hl);hrow.appendChild(eb);hcp.appendChild(hrow);
+  const rrow=D('row');rrow.style.marginBottom='4px';rrow.innerHTML=`<span style="font-size:10px;color:rgba(255,255,255,.45)">Runway vs 12 months</span><span style="font-size:10px;color:rgba(255,255,255,.45)">${(runway/30).toFixed(1)} / 12</span>`;
+  const rb=D('rbar');const rf=D('rf');rf.style.cssText=`width:${rwPct}%;background:${rwCol}`;rb.appendChild(rf);
+  hcp.appendChild(rrow);hcp.appendChild(rb);hero.appendChild(hcp);sec.appendChild(hero);
+  // Stats
+  const g2=D('g2');g2.style.marginBottom='9px';
+  const ob=todayS>data.dailyBudget;
+  const c1=D('card');c1.innerHTML=`<div class="cp"><div class="lbl">Today's Spending</div><div class="sf" style="font-size:23px;color:${ob?'#b83030':'#3a2818'};margin:2px 0">${fmt(todayS)}</div><div style="font-size:10.5px;color:#8a7260">Budget: ${fmt(data.dailyBudget)}</div>${ob?'<div style="font-size:10px;color:#b83030;font-weight:700;margin-top:1px">⚠️ Over budget</div>':''}</div>`;
+  const c2=D('card');c2.innerHTML=`<div class="cp"><div class="lbl">Monthly Burn</div><div class="sf" style="font-size:23px;margin:2px 0">${fmt(Math.round(mBurn))}</div><div style="font-size:10.5px;color:#8a7260">Bills + food avg</div></div>`;
+  g2.appendChild(c1);g2.appendChild(c2);sec.appendChild(g2);
+  if (airconCost > 0) {
+    const acCard = D('card'); acCard.innerHTML = `<div class="cp"><div class="lbl">Aircon Cost This Month</div><div class="sf" style="font-size:23px;margin:2px 0">${fmt(airconCost)}</div><div style="font-size:10.5px;color:#8a7260">Based on current usage</div></div>`;
+    sec.appendChild(acCard);
+  }
+  // Budget slider
+  const sc=D('card');const scp=D('cp');
+  const sr=D('row');sr.style.marginBottom='7px';sr.innerHTML=`<span class="lbl">Daily Food Budget</span><span class="sf amber-c" style="font-size:20px">${fmt(data.dailyBudget)}</span>`;
+  const sl=h('input',{type:'range',min:150,max:700,step:10,value:data.dailyBudget});
+  sl.oninput=e=>setD(d=>({...d,dailyBudget:parseInt(e.target.value)}));
+  scp.appendChild(sr);scp.appendChild(sl);
+  const slr=D('row');slr.style.marginTop='3px';slr.innerHTML=`<span style="font-size:10px;color:#8a7260">₱150 min</span><span style="font-size:10px;color:#8a7260">₱700</span>`;
+  scp.appendChild(slr);sc.appendChild(scp);sec.appendChild(sc);
+  // 7-day chart
+  const cc=D('card');const ccp=D('cp');ccp.style.paddingBottom='5px';
+  const cr=D('row');cr.style.marginBottom='11px';cr.innerHTML=`<span class="lbl">7-Day Food Spending</span><span style="font-size:11px;color:#8a7260">Avg ${fmt(Math.round(avgD))}/day</span>`;
+  const bars=D('bw');
+  chart.forEach(cd=>{
+    const isT=cd.ds===toStr(),pct=cd.spend/maxS,over=cd.spend>data.dailyBudget&&cd.spend>0;
+    const col=D('bc');
+    const nl=D('');nl.style.cssText='font-size:7.5px;color:#8a7260;font-weight:600;text-align:center;height:12px';if(cd.spend>0)nl.textContent=Math.round(cd.spend);col.appendChild(nl);
+    const bg=D('bbg');const fill=D('bf');fill.style.cssText=`height:${Math.max(pct*100,cd.spend>0?8:0)}%;background:${over?'#d45c5c':isT?'#1b4d35':'#2e6e4f'}`;bg.appendChild(fill);col.appendChild(bg);
+    const lel=D('');lel.style.cssText=`font-size:7.5px;color:${isT?'#1b4d35':'#8a7260'};font-weight:${isT?800:400};text-align:center`;lel.textContent=cd.label;col.appendChild(lel);
+    bars.appendChild(col);
+  });
+  ccp.appendChild(cr);ccp.appendChild(bars);ccp.appendChild(Object.assign(D(''),{style:'font-size:10px;color:#8a7260;margin-top:6px',textContent:'🟢 Within budget   🔴 Over budget'}));
+  cc.appendChild(ccp);sec.appendChild(cc);
+  const lb=Btn('bp bfull','+ Log Food / Expense',()=>set({modal:'addTx'}));lb.style.marginBottom='4px';sec.appendChild(lb);
+  // Recent
+  const allTx=[...(data.transactions||[]).slice(0,5).map(t=>({...t,type:'food'})),...(data.homeExpenses||[]).slice(0,3).map(t=>({...t,type:'home'})),
+    ...(data.airconUsage||[]).slice(0,2).map(t=>({...t,type:'aircon',name:'Aircon Usage',amount:t.cost}))].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7);
+  if(allTx.length){
+    const rc=D('card');rc.appendChild(Object.assign(D(''),{style:'padding:8px 13px;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Recent Expenses</span>'}));
+    allTx.forEach(tx=>{
+      const row=D('row cr');row.style.borderBottom='1px solid #e2d9ce';
+      const left=D('');
+      const nm=D('');nm.style.cssText='font-size:12.5px;font-weight:600';nm.textContent=tx.type==='food'?tx.source:tx.name;
+      const info=D('');info.style.cssText='font-size:10.5px;color:#8a7260;margin-top:1px;display:flex;align-items:center;gap:4px';
+      const bcls=tx.type==='food'?'bdg-f':tx.type==='home'?'bdg-h':'bdg-a';
+      info.appendChild(Sp('bdg '+bcls,tx.type==='food'?'Food':tx.type==='home'?'Home':'Aircon'));
+      info.appendChild(document.createTextNode((tx.note?' '+tx.note+' ·':'')+' '+new Date(tx.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})));
+      left.appendChild(nm);left.appendChild(info);
+      const right=D('');right.style.cssText='display:flex;align-items:center;gap:6px';
+      const amt=D('');amt.style.cssText='font-weight:700;color:#b83030;font-size:13px';amt.textContent='-'+fmt(tx.amount);
+      right.appendChild(amt);right.appendChild(h('button',{cls:'del',onClick:()=>tx.type==='food'?delTx(tx.id):delHome(tx.id)},'×'));
+      row.appendChild(left);row.appendChild(right);rc.appendChild(row);
+    });
+    sec.appendChild(rc);
+  }
+  // Quick action buttons
+  const qa=D('');qa.style.cssText='display:flex;gap:8px;margin-bottom:9px';
+  const q1=Btn('bg bfull','🏠 Log Home',()=>set({modal:'addHome'}));
+  const q2=Btn('bg bfull','📊 Reports',()=>set({tab:'reports'}));
+  qa.appendChild(q1);qa.appendChild(q2);sec.appendChild(qa);
+  // Tips
+  const tips=[['🥚','Eggs (₱8–10/pc) — cheapest complete protein. 3/day = ₱25 viand.'],['🐟','Galunggong / Sardines (₱25–50) — cheap, nutritious, easy to cook.'],['🫘','Monggo, Sitaw, Ampalaya (₱30–50/kg) — nutrient-dense vegetables.'],['🥬','Kangkong + Malunggay (₱10–20/bundle) — most nutritious green veg.'],['🍚','Sinangag + egg + leftovers = complete meal for ₱15–25.'],['🛒','Palengke is 20–40% cheaper than supermarket. Go before 9am.']];
+  const tc=D('card');tc.style.marginBottom='18px';
+  tc.appendChild(Object.assign(D(''),{style:'background:#faf6f1;padding:8px 13px;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">💡 Healthy Budget Tips</span>'}));
+  const tcp=D('cp');tips.forEach(([ic,tx])=>{const r=D('tip-r');r.appendChild(h('span',{style:'font-size:15px'},ic));r.appendChild(h('span',{style:'font-size:11.5px;color:#3a2818;line-height:1.5'},tx));tcp.appendChild(r);});tc.appendChild(tcp);sec.appendChild(tc);
+  return sec;
+}
+
+// ─── FOOD TAB ───────────────────────────────────────────────
+function renderFood(){
+  const data=S.data;
+  const months=[...new Set(data.transactions.map(t=>mk(t.date)))].sort((a,b)=>b.localeCompare(a));
+  if(months.length&&!months.includes(S.viewMk))S.viewMk=months[0];
+  const sec=D('sec');
+  const toprow=D('row');toprow.style.marginBottom='11px';
+  const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
+  mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
+  const allM=months.length?months:[curMk()];
+  const msel=Sel(S.viewMk,allM,v=>set({viewMk:v}));
+  msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
+  [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
+  mw.appendChild(msel);toprow.appendChild(mw);toprow.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addTx'})));sec.appendChild(toprow);
+  const mTx=data.transactions.filter(t=>mk(t.date)===S.viewMk);
+  const mTotal=mTx.reduce((s,t)=>s+t.amount,0);
+  const mDays=[...new Set(mTx.map(t=>t.date))].length;
+  const msc=D('card cg');msc.style.marginBottom='9px';msc.innerHTML=`<div class="cp"><div class="row"><div><div class="lblw">Food Spending — ${mklbl(S.viewMk)}</div><div class="sf" style="font-size:28px;color:#fff;margin:2px 0">${fmt(mTotal)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">${mTx.length} transactions · ${mDays} day${mDays!==1?'s':''}</div></div><div style="text-align:right"><div class="lblw">Avg/Day</div><div class="sf" style="font-size:20px;color:#fff;margin-top:3px">${fmt(mDays?Math.round(mTotal/mDays):0)}</div></div></div></div>`;
+  sec.appendChild(msc);
+  if(!mTx.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">🍽️</div><div>No food expenses logged for this month.</div>';sec.appendChild(e);return sec;}
+  const grouped=mTx.reduce((acc,tx)=>{if(!acc[tx.date])acc[tx.date]=[];acc[tx.date].push(tx);return acc;},{});
+  Object.keys(grouped).sort((a,b)=>b.localeCompare(a)).forEach(ds=>{
+    const txs=grouped[ds],total=txs.reduce((s,t)=>s+t.amount,0),over=total>data.dailyBudget;
+    const card=D('card');
+    const hdr=D('row');hdr.style.cssText='padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
+    hdr.appendChild(h('span',{style:'font-weight:700;font-size:12.5px'},new Date(ds+'T12:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric'})));
+    hdr.appendChild(h('span',{cls:'sf',style:`font-size:16px;color:${over?'#b83030':'#2e6e4f'}`},fmt(total)+(over?' ⚠️':'')));
+    card.appendChild(hdr);
+    txs.forEach(tx=>{
+      const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
+      const left=D('');left.appendChild(h('span',{style:'font-size:12px;font-weight:600'},tx.source));
+      if(tx.note)left.appendChild(h('span',{style:'font-size:11px;color:#8a7260'},' · '+tx.note));
+      const right=D('');right.style.cssText='display:flex;align-items:center;gap:6px';
+      right.appendChild(h('span',{style:'font-weight:700;font-size:13px'},fmt(tx.amount)));
+      const row=swRow(inner,()=>openEdit('food',tx.id),()=>delTx(tx.id));
+      // re-append right to inner
+      inner.appendChild(right);
+      card.appendChild(row);
+    });
+    const foot=D('');foot.style.cssText='padding:5px 13px;display:flex;justify-content:flex-end';
+    foot.appendChild(h('span',{style:`font-size:10.5px;color:${over?'#b83030':'#8a7260'}`},over?`₱${(total-data.dailyBudget).toFixed(0)} over budget`:`₱${(data.dailyBudget-total).toFixed(0)} remaining`));
+    card.appendChild(foot);sec.appendChild(card);
+  });
+  return sec;
+}
+
+// ─── HOME TAB ───────────────────────────────────────────────
+function renderHome(){
+  const data=S.data,expenses=data.homeExpenses||[];
+  const months=[...new Set(expenses.map(e=>mk(e.date)))].sort((a,b)=>b.localeCompare(a));
+  if(months.length&&!months.includes(S.viewMk))S.viewMk=months[0];
+  const sec=D('sec');
+  const toprow=D('row');toprow.style.marginBottom='11px';
+  const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
+  mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
+  const allM=months.length?months:[curMk()];
+  const msel=Sel(S.viewMk,allM,v=>set({viewMk:v}));
+  msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
+  [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
+  mw.appendChild(msel);toprow.appendChild(mw);toprow.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addHome'})));sec.appendChild(toprow);
+  const chips=D('chips');['All',...HCATS].forEach(cat=>{const c=D('chip'+(S.homeCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({homeCat:cat});chips.appendChild(c);});sec.appendChild(chips);
+  const mExp=expenses.filter(e=>mk(e.date)===S.viewMk);
+  const mTotal=mExp.reduce((s,e)=>s+e.amount,0);
+  const msc=D('card cg');msc.style.marginBottom='9px';msc.innerHTML=`<div class="cp"><div class="lblw">Home & Toiletries — ${mklbl(S.viewMk)}</div><div class="sf" style="font-size:28px;color:#fff;margin:2px 0">${fmt(mTotal)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">${mExp.length} item${mExp.length!==1?'s':''}</div></div>`;
+  sec.appendChild(msc);
+  const filtered=mExp.filter(e=>S.homeCat==='All'||e.category===S.homeCat);
+  if(!filtered.length){const e=D('card empty');e.innerHTML=`<div style="font-size:34px;margin-bottom:7px">🧴</div><div>No home expenses${S.homeCat!=='All'?' for '+S.homeCat:''} this month.</div>`;sec.appendChild(e);return sec;}
+  const byCat=filtered.reduce((acc,e)=>{if(!acc[e.category])acc[e.category]=[];acc[e.category].push(e);return acc;},{});
+  Object.entries(byCat).sort().forEach(([cat,items])=>{
+    const total=items.reduce((s,e)=>s+e.amount,0);
+    const card=D('card');const hdr=D('row');hdr.style.cssText='padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
+    hdr.appendChild(h('span',{style:'font-weight:700;font-size:13px'},cat));
+    hdr.appendChild(h('span',{cls:'sf',style:'font-size:16px;color:#1a56c4'},fmt(total)));
+    card.appendChild(hdr);
+    items.sort((a,b)=>b.date.localeCompare(a.date)).forEach(item=>{
+      const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
+      const left=D('');
+      const nm=D('');nm.style.cssText='font-size:12px;font-weight:600';nm.textContent=item.name;
+      const ns=D('');ns.style.cssText='font-size:10.5px;color:#8a7260';ns.textContent=item.store+(item.note?' · '+item.note:'')+' · '+new Date(item.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'});
+      left.appendChild(nm);left.appendChild(ns);
+      const right=D('');right.style.cssText='display:flex;align-items:center;gap:6px';
+      right.appendChild(h('span',{style:'font-weight:700;font-size:13px'},fmt(item.amount)));
+      inner.appendChild(left);inner.appendChild(right);
+      card.appendChild(swRow(inner,()=>openEdit('home',item.id),()=>delHome(item.id)));
+    });
+    sec.appendChild(card);
+  });
+  return sec;
+}
+
+// ─── PRICES TAB ──────────────────────────────────────────────
+function renderPrices(){
+  const groups=pGroups();const sec=D('sec');
+  const srow=D('row');srow.style.marginBottom='8px';
+  const si=Inp('',{type:'text',placeholder:'🔍 Search item...',value:S.pSearch});si.style.flex='1';si.oninput=e=>set({pSearch:e.target.value});
+  srow.appendChild(si);srow.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addPrice'})));sec.appendChild(srow);
+  const chips=D('chips');['All','Food','Home & Toiletries'].forEach(cat=>{const c=D('chip'+(S.pCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({pCat:cat});chips.appendChild(c);});sec.appendChild(chips);
+  if(!groups.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">🏷️</div><div>No prices tracked yet.<br/>Add items or use AI Scan!</div>';sec.appendChild(e);return sec;}
+  groups.forEach(group=>{
+    const card=D('card');const hdr=D('');hdr.style.cssText='padding:7px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
+    const hn=D('');hn.style.cssText='font-weight:700;font-size:13px;text-transform:capitalize';hn.textContent=group.display;hdr.appendChild(hn);
+    if(group.items.length>1){const gs=D('');gs.style.cssText='font-size:10.5px;color:#2e6e4f;font-weight:700;margin-top:1px';gs.textContent=`Save ${fmt(group.items[group.items.length-1].price-group.items[0].price)} by choosing cheapest`;hdr.appendChild(gs);}
+    card.appendChild(hdr);
+    group.items.forEach((item,idx)=>{
+      const inner=D('row cr');inner.style.cssText=`border-bottom:1px solid #e2d9ce;background:${idx===0?'#edf8f2':'#fff'}`;
+      const left=D('');
+      if(idx===0){const t=D('');t.style.marginBottom='2px';t.appendChild(Sp('tag-c','CHEAPEST'));left.appendChild(t);}
+      const st=D('');st.style.cssText='font-size:12px;color:#8a7260';st.textContent=item.store;
+      const ut=D('');ut.style.cssText='font-size:10px;color:#8a7260';ut.textContent=item.unit+(item.subcat?' · '+item.subcat:'');
+      left.appendChild(st);left.appendChild(ut);
+      const right=D('');right.style.cssText='display:flex;align-items:center;gap:7px';
+      right.appendChild(h('span',{cls:'sf',style:`font-size:18px;color:${idx===0?'#2e6e4f':'#3a2818'}`},fmt(item.price)));
+      inner.appendChild(left);inner.appendChild(right);
+      card.appendChild(swRow(inner,()=>openEdit('price',item.id),()=>delPrice(item.id)));
+    });
+    sec.appendChild(card);
+  });
+  return sec;
+}
+
+// ─── SCAN TAB ───────────────────────────────────────────────
+function renderScan(){
+  const sec=D('sec');const card=D('card');const cp=D('cp');
+  cp.appendChild(h('span',{cls:'sf',style:'font-size:17px;display:block;margin-bottom:4px'},'📸 AI Price Scanner'));
+  cp.appendChild(h('p',{style:'font-size:12px;color:#8a7260;line-height:1.6;margin-bottom:12px'},'Upload a photo of a receipt, price tag, menu, or market sign. Gemini AI will extract all prices automatically.'));
+  cp.appendChild(Object.assign(D('qtip'),{innerHTML:'<strong>⚡ Gemini Free Tier Limits:</strong> ~15 scans/minute, ~1,500/day. App auto-tries gemini-2.0-flash-lite first, then gemini-2.0-flash. If you hit quota, wait 1–2 minutes.'}));
+  const ok=D('row');ok.style.cssText='background:#e6f3ec;border-radius:8px;padding:6px 11px;margin-bottom:11px';
+  ok.appendChild(h('span',{style:'font-size:11px;color:#2e6e4f;font-weight:700'},'✅ Gemini Active'));
+  ok.appendChild(h('button',{style:'font-size:10.5px;color:#8a7260;background:none;border:none;cursor:pointer',onClick:()=>{sk('');set({geminiKey:'',setupInput:'',setupErr:'',scanData:null,scanImg:null});}},'Change 🔑'));
+  cp.appendChild(ok);
+  const fi=h('input',{type:'file',accept:'image/*',style:'display:none'});
+  fi.onchange=e=>{const file=e.target.files[0];if(!file)return;set({scanData:null,scanErr:'',addedIdx:new Set()});const r=new FileReader();r.onload=ev=>{const full=ev.target.result;set({scanImg:full.split(',')[1],scanMime:full.split(';')[0].split(':')[1]});};r.readAsDataURL(file);};
+  cp.appendChild(fi);
+  if(!S.scanImg){cp.appendChild(Btn('bp bfull','📷 Choose Photo / Take a Picture',()=>fi.click()));}
+  else{
+    cp.appendChild(h('img',{src:`data:${S.scanMime};base64,${S.scanImg}`,cls:'si'}));
+    const br=D('');br.style.cssText='display:flex;gap:7px';
+    const sb=Btn('ba','🔍 '+(S.scanning?'Analyzing...':'Scan Prices'),doScan,S.scanning);sb.style.cssText='flex:1;padding:11px';
+    br.appendChild(sb);br.appendChild(Btn('bgsm','✕',()=>set({scanImg:null,scanData:null,scanErr:'',addedIdx:new Set()})));
+    cp.appendChild(br);
+  }
+  card.appendChild(cp);sec.appendChild(card);
+  if(S.scanErr){const err=D('aerr');err.textContent=S.scanErr;sec.appendChild(err);}
+  if(S.scanData!==null){
+    const rc=D('card');rc.appendChild(Object.assign(D(''),{style:'padding:7px 13px;border-bottom:1px solid #e2d9ce',innerHTML:`<span class="lbl">Extracted: ${S.scanData.length} item${S.scanData.length!==1?'s':''}</span>`}));
+    if(!S.scanData.length)rc.appendChild(Object.assign(D('cp muted'),{style:'text-align:center',textContent:'No prices found. Try a clearer photo.'}));
+    else S.scanData.forEach((item,idx)=>{
+      const row=D('row cr');row.style.borderBottom='1px solid #e2d9ce';
+      const left=D('');left.style.flex='1';
+      left.appendChild(h('div',{style:'font-size:12.5px;font-weight:700;text-transform:capitalize'},item.name));
+      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${item.store||'Unknown'} · ${item.unit||'pcs'} · ${item.subcat||item.category}`));
+      const right=D('');right.style.cssText='display:flex;align-items:center;gap:8px;flex-shrink:0';
+      right.appendChild(h('span',{cls:'sf',style:'font-size:16px'},fmt(item.price)));
+      if(S.addedIdx.has(idx))right.appendChild(h('span',{style:'font-size:10.5px;color:#2e6e4f;font-weight:800'},'✓ Added'));
+      else right.appendChild(Btn('bsm','+ Add',()=>addScanned(item,idx)));
+      row.appendChild(left);row.appendChild(right);rc.appendChild(row);
+    });
+    sec.appendChild(rc);
+  }
+  return sec;
+}
+
+// ─── BILLS TAB ──────────────────────────────────────────────
+function renderBills(){
+  const data=S.data,bm=S.billsMk;const sec=D('sec');
+  const toprow=D('row');toprow.style.marginBottom='10px';
+  const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
+  mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
+  const allM=Array.from({length:7},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-3+i);return mk(d2.toISOString().split('T')[0]);});
+  const msel=Sel(bm,allM,v=>set({billsMk:v}));
+  msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
+  [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
+  mw.appendChild(msel);toprow.appendChild(mw);toprow.appendChild(Btn('bp bsm','+ Bill',()=>set({modal:'addBill'})));sec.appendChild(toprow);
+  const mTotal=data.bills.reduce((s,b)=>s+(b.monthlyAmounts[bm]||0),0);
+  const mUnpaid=data.bills.filter(b=>!b.paid[bm]).reduce((s,b)=>s+(b.monthlyAmounts[bm]||0),0);
+  const hero=D('card cg');hero.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr"><div style="padding:12px 13px;border-right:1px solid rgba(255,255,255,.15)"><div class="lblw">${mklbl(bm)} Bills</div><div class="sf" style="font-size:24px;color:#fff;margin-top:2px">${fmt(mTotal)}</div></div><div style="padding:12px 13px"><div class="lblw">Unpaid</div><div class="sf" style="font-size:24px;color:${mUnpaid>0?'#ffd07a':'#7fe0b0'};margin-top:2px">${fmt(mUnpaid)}</div></div></div>`;
+  sec.appendChild(hero);
+  sec.appendChild(h('p',{style:'font-size:11.5px;color:#8a7260;margin-bottom:9px;padding:0 2px;line-height:1.5'},`Enter the amount for each bill this month — amounts can change every month.`));
+  data.bills.forEach(bill=>{
+    const amount=bill.monthlyAmounts[bm]||0;const paid=!!bill.paid[bm];
+    const card=D('card');
+    const hdr=D('row');hdr.style.cssText='padding:9px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
+    hdr.appendChild(h('span',{style:'font-weight:700;font-size:13px'},bill.name));
+    hdr.appendChild(h('button',{cls:'del',onClick:()=>delBill(bill.id)},'×'));
+    card.appendChild(hdr);
+    // Amount input — NO re-render on keypress, only on blur
+    const ar=D('row cp');ar.style.borderBottom='1px solid #e2d9ce';
+    ar.appendChild(h('span',{style:'font-size:11.5px;color:#8a7260'},`Amount for ${mklbl(bm)}:`));
+    const inputKey=bill.id+'_'+bm;
+    const ai=h('input',{type:'number',inputmode:'decimal',placeholder:'0',style:'width:110px;padding:7px 9px;border-radius:7px;border:1.5px solid #e2d9ce;font-size:14px;font-weight:600;color:#3a2818;text-align:right;font-family:inherit'});
+    ai.value=S.billDraft[inputKey]!==undefined?S.billDraft[inputKey]:(amount||'');
+    ai.addEventListener('input',e=>{S.billDraft[inputKey]=e.target.value;});  // NO render
+    ai.addEventListener('blur',e=>{delete S.billDraft[inputKey];setBillAmt(bill.id,bm,e.target.value);});
+    ar.appendChild(ai);card.appendChild(ar);
+    // Paid toggle
+    const pr=D('row cp');
+    const pl=D('');pl.style.cssText='display:flex;align-items:center;gap:9px';
+    const chk=D('chk '+(paid?'chk-on':'chk-off'));chk.onclick=()=>toggleBillPaid(bill.id,bm);
+    if(paid)chk.appendChild(h('span',{style:'color:#fff;font-size:12px;line-height:1'},'✓'));
+    const info=D('');
+    info.appendChild(h('div',{style:`font-weight:600;font-size:13px;${paid?'text-decoration:line-through;color:#8a7260':''}`,textContent:paid?'Paid':'Mark as paid'}));
+    info.appendChild(h('div',{style:`font-size:10.5px;${paid?'color:#2e6e4f;font-weight:700':'color:#8a7260'}`,textContent:paid?'✅ Paid this month':'Tap checkbox to mark paid'}));
+    pl.appendChild(chk);pl.appendChild(info);
+    pr.appendChild(pl);pr.appendChild(h('span',{cls:'sf',style:`font-size:18px;color:${amount?'#3a2818':'#c4a99a'}`},amount?fmt(amount):'₱—'));
+    card.appendChild(pr);sec.appendChild(card);
+  });
+  sec.appendChild(h('button',{cls:'bgfull',style:'margin-bottom:18px',onClick:()=>set({modal:'addBill'})},'+ Add a Bill'));
+  return sec;
+}
+
+// ─── REPORTS TAB ─────────────────────────────────────────────
+function renderReports(){
+  const data=S.data,rm=S.rptMk;const sec=D('sec');
+  const toprow=D('row');toprow.style.marginBottom='11px';
+  const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
+  mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
+  const allMonths=[...new Set([...(data.transactions||[]).map(t=>mk(t.date)),...(data.homeExpenses||[]).map(e=>mk(e.date)),...Array.from({length:3},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-i);return mk(d2.toISOString().split('T')[0]);})])].sort((a,b)=>b.localeCompare(a));
+  const msel=Sel(rm,allMonths,v=>set({rptMk:v}));
+  msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
+  [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
+  mw.appendChild(msel);toprow.appendChild(mw);sec.appendChild(toprow);
+  // Totals
+  const foodTx=(data.transactions||[]).filter(t=>mk(t.date)===rm);
+  const homeEx=(data.homeExpenses||[]).filter(e=>mk(e.date)===rm);
+  const airconUsage=(data.airconUsage||[]).filter(u=>mk(u.date)===rm);
+  const billsTotal=data.bills.reduce((s,b)=>s+(b.monthlyAmounts[rm]||0),0);
+  const foodTotal=foodTx.reduce((s,t)=>s+t.amount,0);
+  const homeTotal=homeEx.reduce((s,e)=>s+e.amount,0);
+  const airconTotal=airconUsage.reduce((s,u)=>s+u.cost,0);
+  const grandTotal=foodTotal+homeTotal+billsTotal+airconTotal;
+  // Hero card
+  const hero=D('card cg');hero.style.marginBottom='9px';
+  hero.innerHTML=`<div class="cp"><div class="row" style="margin-bottom:10px"><div><div class="lblw">Total Spending — ${mklbl(rm)}</div><div class="sf" style="font-size:32px;color:#fff;margin:2px 0">${fmt(grandTotal)}</div></div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"><div style="background:rgba(255,255,255,.1);border-radius:8px;padding:8px 5px"><div style="font-size:9px;color:rgba(255,255,255,.55);font-weight:700;text-transform:uppercase;letter-spacing:.3px">Food</div><div class="sf" style="font-size:13px;color:#fff;margin-top:2px">${fmt(foodTotal)}</div></div><div style="background:rgba(255,255,255,.1);border-radius:8px;padding:8px 5px"><div style="font-size:9px;color:rgba(255,255,255,.55);font-weight:700;text-transform:uppercase;letter-spacing:.3px">Home</div><div class="sf" style="font-size:13px;color:#fff;margin-top:2px">${fmt(homeTotal)}</div></div><div style="background:rgba(255,255,255,.1);border-radius:8px;padding:8px 5px"><div style="font-size:9px;color:rgba(255,255,255,.55);font-weight:700;text-transform:uppercase;letter-spacing:.3px">Bills</div><div class="sf" style="font-size:13px;color:#fff;margin-top:2px">${fmt(billsTotal)}</div></div><div style="background:rgba(255,255,255,.1);border-radius:8px;padding:8px 5px"><div style="font-size:9px;color:rgba(255,255,255,.55);font-weight:700;text-transform:uppercase;letter-spacing:.3px">Aircon</div><div class="sf" style="font-size:13px;color:#fff;margin-top:2px">${fmt(airconTotal)}</div></div></div></div>`;
+  sec.appendChild(hero);
+  // Category breakdown
+  const catData={};
+  foodTx.forEach(t=>{const key=t.source;if(!catData[key])catData[key]={amount:0,type:'food'};catData[key].amount+=t.amount;});
+  homeEx.forEach(e=>{const key=e.category;if(!catData[key])catData[key]={amount:0,type:'home'};catData[key].amount+=e.amount;});
+  if(billsTotal>0)catData['Bills']={amount:billsTotal,type:'bill'};
+  if(airconTotal>0)catData['Aircon']={amount:airconTotal,type:'aircon'};
+  const sortedCats=Object.entries(catData).sort((a,b)=>b[1].amount-a[1].amount);
+  const maxCat=sortedCats.length?sortedCats[0][1].amount:1;
+  if(sortedCats.length){
+    const bcard=D('card');bcard.style.marginBottom='9px';
+    bcard.appendChild(Object.assign(D(''),{style:'padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Breakdown by Category</span>'}));
+    const bcp=D('cp');
+    const colors={'food':'#2e6e4f','home':'#1a56c4','bill':'#b8720c','aircon':'#e65100'};
+    sortedCats.forEach(([cat,{amount,type}])=>{
+      const row=D('rpt-bar-row');
+      const lbl=D('rpt-bar-label');lbl.textContent=cat;
+      const track=D('rpt-bar-track');
+      const fill=D('rpt-bar-fill');fill.style.cssText=`width:${(amount/maxCat*100).toFixed(1)}%;background:${colors[type]||'#8a7260'}`;
+      track.appendChild(fill);
+      const val=D('rpt-bar-val');val.textContent=fmt(amount);
+      const pct=D('');pct.style.cssText='font-size:10px;color:#8a7260;width:35px;text-align:right;flex-shrink:0';
+      pct.textContent=grandTotal?`${(amount/grandTotal*100).toFixed(0)}%`:'';
+      row.appendChild(lbl);row.appendChild(track);row.appendChild(val);row.appendChild(pct);bcp.appendChild(row);
+    });
+    bcard.appendChild(bcp);sec.appendChild(bcard);
+  }
+  // Daily spending chart for the month
+  if(foodTx.length){
+    const dc=D('card');dc.appendChild(Object.assign(D(''),{style:'padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Food Spending by Source</span>'}));
+    const dcp=D('cp');
+    const bySrc=foodTx.reduce((acc,t)=>{if(!acc[t.source])acc[t.source]=0;acc[t.source]+=t.amount;return acc;},{});
+    const maxSrc=Math.max(...Object.values(bySrc),1);
+    Object.entries(bySrc).sort((a,b)=>b[1]-a[1]).forEach(([src,amt])=>{
+      const row=D('rpt-bar-row');
+      const lbl=D('rpt-bar-label');lbl.textContent=src;
+      const track=D('rpt-bar-track');const fill=D('rpt-bar-fill');fill.style.cssText=`width:${(amt/maxSrc*100).toFixed(1)}%;background:#2e6e4f`;track.appendChild(fill);
+      const val=D('rpt-bar-val');val.textContent=fmt(amt);
+      row.appendChild(lbl);row.appendChild(track);row.appendChild(val);dcp.appendChild(row);
+    });
+    dc.appendChild(dcp);sec.appendChild(dc);
+  }
+  // Top expenses
+  const allEx=[...foodTx.map(t=>({name:t.source+(t.note?' — '+t.note:''),amount:t.amount,date:t.date,type:'food'})),...homeEx.map(e=>({name:e.name,amount:e.amount,date:e.date,type:'home'})),...airconUsage.map(u=>({name:'Aircon ('+u.hours+' hrs)',amount:u.cost,date:u.date,type:'aircon'}))].sort((a,b)=>b.amount-a.amount).slice(0,10);
+  if(allEx.length){
+    const ec=D('card');ec.style.marginBottom='18px';
+    ec.appendChild(Object.assign(D(''),{style:'padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Top 10 Expenses This Month</span>'}));
+    allEx.forEach(e=>{
+      const row=D('row cr');row.style.borderBottom='1px solid #e2d9ce';
+      const left=D('');
+      left.appendChild(h('div',{style:'font-size:12px;font-weight:600'},e.name));
+      const info=D('');info.style.cssText='font-size:10px;color:#8a7260;margin-top:1px;display:flex;gap:5px;align-items:center';
+      const bcls=e.type==='food'?'bdg-f':e.type==='home'?'bdg-h':'bdg-a';
+      info.appendChild(Sp('bdg '+bcls,e.type==='food'?'Food':e.type==='home'?'Home':'Aircon'));
+      info.appendChild(document.createTextNode(new Date(e.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})));
+      left.appendChild(info);
+      row.appendChild(left);row.appendChild(h('span',{cls:'sf',style:'font-size:15px'},fmt(e.amount)));
+      ec.appendChild(row);
+    });
+    sec.appendChild(ec);
+  }
+  if(!sortedCats.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">📊</div><div>No expenses logged for this month yet.</div>';sec.appendChild(e);}
+  return sec;
+}
+
+// ─── STOCKS TAB ──────────────────────────────────────────────
+function renderStocks(){
+  const data=S.data,stocks=data.stocks||[];const sec=D('sec');
+  const toprow=D('row');toprow.style.marginBottom='10px';
+  toprow.appendChild(h('span',{style:'font-size:14px;font-weight:700;color:#3a2818'},'Stocks & Inventory'));
+  toprow.appendChild(Btn('bp bsm','+ Item',()=>set({modal:'addStock'})));sec.appendChild(toprow);
+  // Status chips
+  const chips=D('chips');
+  ['All','Low Stock','Out of Stock'].forEach(s=>{const c=D('chip'+(S.stockStatus===s?' chip-on':''));c.textContent=s==='All'?'All':s==='Low Stock'?'⚠️ Low':'❌ Out';c.onclick=()=>set({stockStatus:s});chips.appendChild(c);});
+  ['All',...SCATS].forEach(cat=>{const c=D('chip'+(S.stockCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({stockCat:cat});chips.appendChild(c);});
+  sec.appendChild(chips);
+  // Stats
+  const outItems=stocks.filter(s=>s.quantity<=0);
+  const lowItems=stocks.filter(s=>s.quantity>0&&s.quantity<=s.minQty);
+  if(outItems.length||lowItems.length){
+    const ac=D('card');ac.style.cssText='background:#fdecea;border:1px solid #f5c2c2;margin-bottom:9px';
+    const acp=D('cp');
+    if(outItems.length)acp.appendChild(h('div',{style:'font-size:12.5px;color:#b83030;font-weight:700;margin-bottom:4px'},`❌ Out of stock: ${outItems.map(s=>s.name).join(', ')}`));
+    if(lowItems.length)acp.appendChild(h('div',{style:'font-size:12.5px;color:#b8720c;font-weight:700'},`⚠️ Running low: ${lowItems.map(s=>s.name).join(', ')}`));
+    ac.appendChild(acp);sec.appendChild(ac);
+  }
+  let filtered=stocks;
+  if(S.stockCat!=='All')filtered=filtered.filter(s=>s.category===S.stockCat);
+  if(S.stockStatus==='Low Stock')filtered=filtered.filter(s=>s.quantity>0&&s.quantity<=s.minQty);
+  if(S.stockStatus==='Out of Stock')filtered=filtered.filter(s=>s.quantity<=0);
+  if(!filtered.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">📦</div><div>No items tracked yet.<br/>Add items you buy regularly<br/>to keep track of your stocks.</div>';sec.appendChild(e);return sec;}
+  // Group by category
+  const byCat=filtered.reduce((acc,s)=>{if(!acc[s.category])acc[s.category]=[];acc[s.category].push(s);return acc;},{});
+  Object.entries(byCat).sort().forEach(([cat,items])=>{
+    const card=D('card');card.appendChild(DivHdr(cat));
+    items.forEach(item=>{
+      const isOut=item.quantity<=0,isLow=item.quantity>0&&item.quantity<=item.minQty;
+      const status=isOut?Sp('s-out','OUT'):isLow?Sp('s-low','LOW'):Sp('s-ok','OK');
+      const inner=D('row cr');inner.style.cssText='border-bottom:1px solid #e2d9ce;min-height:52px';
+      const left=D('');left.style.flex='1';
+      const nrow=D('row');nrow.style.marginBottom='2px';
+      const nm=h('span',{style:'font-size:12.5px;font-weight:700'},item.name);
+      nrow.appendChild(nm);nrow.appendChild(status);left.appendChild(nrow);
+      const qrow=D('');qrow.style.cssText='font-size:11px;color:#8a7260';qrow.textContent=`${item.quantity} ${item.unit} available · min: ${item.minQty} ${item.unit}`;
+      left.appendChild(qrow);
+      if(item.note){const nt=D('');nt.style.cssText='font-size:10.5px;color:#8a7260;font-style:italic';nt.textContent=item.note;left.appendChild(nt);}
+      const right=D('');right.style.cssText='display:flex;align-items:center;gap:6px;flex-shrink:0';
+      const minusBtn=h('button',{cls:'qty-btn',onClick:()=>adjStock(item.id,-1)},'-');
+      const qv=h('span',{style:`font-weight:800;font-size:15px;min-width:24px;text-align:center;color:${isOut?'#b83030':isLow?'#b8720c':'#1b4d35'}`},String(item.quantity));
+      const plusBtn=h('button',{cls:'qty-btn',onClick:()=>adjStock(item.id,1)},'+');
+      right.appendChild(minusBtn);right.appendChild(qv);right.appendChild(plusBtn);
+      inner.appendChild(left);inner.appendChild(right);
+      card.appendChild(swRow(inner,()=>openEdit('stock',item.id),()=>delStock(item.id)));
+    });
+    sec.appendChild(card);
+  });
+  sec.appendChild(D(''));sec.lastChild.style.height='18px';
+  return sec;
+}
+
+// ─── AIRCON TAB ──────────────────────────────────────────────
+function renderAircon(){
+  const data=S.data,sec=D('sec');
+  const usage=data.airconUsage||[];
+  const months=[...new Set(usage.map(e=>mk(e.date)))].sort((a,b)=>b.localeCompare(a));
+  if(months.length&&!months.includes(S.viewMk))S.viewMk=months[0];
+  const mUsage=usage.filter(u=>mk(u.date)===S.viewMk);
+  const mCost=mUsage.reduce((s,u)=>s+u.cost,0);
+  const mHours=mUsage.reduce((s,u)=>s+u.hours,0);
+
+  const toprow=D('row');toprow.style.marginBottom='10px';
+  toprow.appendChild(h('span',{style:'font-size:14px;font-weight:700'},'❄️ Aircon Usage'));
+  toprow.appendChild(Btn('bgsm','⚙️ Config',()=>set({modal:'airSet',airSetF:{rate:data.meralcoRate,startup:data.airconStartupKwh,running:data.airconRunningKwh}})));
+  sec.appendChild(toprow);
+
+  const hero=D('card cg');hero.innerHTML=`<div class="cp"><div class="lblw">${mklbl(S.viewMk)} Est. Cost</div><div class="sf" style="font-size:32px;color:#fff;margin:2px 0">${fmt(mCost)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">Total: ${mHours.toFixed(1)} hours usage</div></div>`;
+  sec.appendChild(hero);
+
+  const addB=Btn('bp bfull','+ Log Usage',()=>set({modal:'addAircon'}));addB.style.margin='10px 0';sec.appendChild(addB);
+
+  if(!mUsage.length){const e=D('card empty');e.innerHTML='<div>No usage logged for this month.</div>';sec.appendChild(e);return sec;}
+
+  const card=D('card');card.appendChild(DivHdr('Usage History'));
+  mUsage.forEach(u=>{
+    const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
+    const left=D('');
+    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`${u.hours} hours`));
+    left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})} · ${u.kwh.toFixed(2)} kWh`));
+    const right=D('');right.style.cssText='text-align:right';
+    right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},fmt(u.cost)));
+    right.appendChild(h('div',{style:'font-size:9px;color:#8a7260'},`@${u.rateAtTime}/kWh`));
+    inner.appendChild(left);inner.appendChild(right);
+    card.appendChild(swRow(inner,()=>openEdit('aircon',u.id),()=>delAircon(u.id)));
+  });
+  sec.appendChild(card);
+  return sec;
+}
+
+// ─── MODALS ──────────────────────────────────────────────────
+function renderModal(){
+  if(!S.modal)return null;
+  const bg=D('mbg');bg.onclick=e=>{if(e.target===bg)set({modal:null});};
+  const box=D('mbox');
+  const M=(t,c)=>{const tt=D('mt');tt.textContent=t;box.appendChild(tt);box.appendChild(c);bg.appendChild(box);return bg;};
+  if(S.modal==='addTx'){
+    const c=D('');
+    const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 150',value:S.txF.amount});ai.oninput=e=>S.txF.amount=e.target.value;setTimeout(()=>ai.focus(),50);
+    c.appendChild(Fg('Amount (₱)',ai));c.appendChild(Fg('Source',Sel(S.txF.source,FSRC,v=>S.txF.source=v)));
+    const ni=Inp('',{type:'text',placeholder:'e.g. Pork sinigang',value:S.txF.note});ni.oninput=e=>S.txF.note=e.target.value;c.appendChild(Fg('Notes (optional)',ni));
+    const di=Inp('',{type:'date',value:S.txF.date});di.oninput=e=>S.txF.date=e.target.value;c.appendChild(Fg('Date',di));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save',addTx);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Food Expense',c);
+  }
+  if(S.modal==='addHome'){
+    const c=D('');
+    const ni=Inp('',{type:'text',placeholder:'e.g. Dish soap, Shampoo',value:S.homeF.name});ni.oninput=e=>S.homeF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+    const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.homeF.amount});ai.oninput=e=>S.homeF.amount=e.target.value;c.appendChild(Fg('Amount (₱)',ai));
+    c.appendChild(Fg('Category',Sel(S.homeF.category,HCATS,v=>S.homeF.category=v)));c.appendChild(Fg('Store',Sel(S.homeF.store,STORES,v=>S.homeF.store=v)));
+    const ot=Inp('',{type:'text',placeholder:'Optional',value:S.homeF.note});ot.oninput=e=>S.homeF.note=e.target.value;c.appendChild(Fg('Notes',ot));
+    const di=Inp('',{type:'date',value:S.homeF.date});di.oninput=e=>S.homeF.date=e.target.value;c.appendChild(Fg('Date',di));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save',addHome);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Home / Toiletries',c);
+  }
+  if(S.modal==='addPrice'){
+    const c=D('');
+    const ni=Inp('',{type:'text',placeholder:'e.g. Galunggong, Shampoo',value:S.priceF.name});ni.oninput=e=>S.priceF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+    const g2=D('g2');
+    const pfg=D('fg');pfg.appendChild(h('label',{cls:'fl'},'Price (₱)'));const pi=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.priceF.price});pi.oninput=e=>S.priceF.price=e.target.value;pfg.appendChild(pi);g2.appendChild(pfg);
+    const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(S.priceF.unit,UNITS,v=>S.priceF.unit=v));g2.appendChild(ufg);c.appendChild(g2);
+    const catSel=Sel(S.priceF.category,['Food','Home & Toiletries'],v=>{S.priceF.category=v;S.priceF.subcat=v==='Food'?FCATS[0]:HCATS[0];render();});c.appendChild(Fg('Category',catSel));
+    c.appendChild(Fg('Subcategory',Sel(S.priceF.subcat,S.priceF.category==='Food'?FCATS:HCATS,v=>S.priceF.subcat=v)));
+    c.appendChild(Fg('Store',Sel(S.priceF.store,STORES,v=>S.priceF.store=v)));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save Price',addPrice);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Price',c);
+  }
+  if(S.modal==='addStock'){
+    const c=D('');
+    const ni=Inp('',{type:'text',placeholder:'e.g. Rice, Shampoo, Dishwashing',value:S.stockF.name});ni.oninput=e=>S.stockF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+    c.appendChild(Fg('Category',Sel(S.stockF.category,SCATS,v=>S.stockF.category=v)));
+    const g2=D('g2');
+    const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Current Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.stockF.quantity});qi.oninput=e=>S.stockF.quantity=e.target.value;qfg.appendChild(qi);g2.appendChild(qfg);
+    const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(S.stockF.unit,UNITS,v=>S.stockF.unit=v));g2.appendChild(ufg);c.appendChild(g2);
+    const mfg=D('fg');mfg.appendChild(h('label',{cls:'fl'},'Min Qty (alert below this)'));const mi=Inp('',{type:'number',inputmode:'decimal',placeholder:'1',value:S.stockF.minQty});mi.oninput=e=>S.stockF.minQty=e.target.value;mfg.appendChild(mi);c.appendChild(mfg);
+    const nt=Inp('',{type:'text',placeholder:'e.g. Buy at Palengke',value:S.stockF.note});nt.oninput=e=>S.stockF.note=e.target.value;c.appendChild(Fg('Notes (optional)',nt));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Add Item',addStock);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Stock Item',c);
+  }
+  if(S.modal==='addBill'){
+    const c=D('');
+    const ni=Inp('',{type:'text',placeholder:'e.g. Water, Phone Plan',value:S.billF.name});ni.oninput=e=>S.billF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Bill Name',ni));
+    c.appendChild(h('p',{style:'font-size:11.5px;color:#8a7260;margin-bottom:12px;line-height:1.5'},'You\'ll enter the amount each month since bills change.'));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Add',addBill);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Bill',c);
+  }
+  if(S.modal==='editBal'){
+    const c=D('');
+    const bi=Inp('',{type:'number',inputmode:'decimal',value:S.balInput});bi.oninput=e=>S.balInput=e.target.value;setTimeout(()=>bi.focus(),50);c.appendChild(Fg('Balance (₱)',bi));
+    c.appendChild(h('p',{style:'font-size:11.5px;color:#8a7260;margin-bottom:12px;line-height:1.5'},'Set to your actual bank/wallet balance.'));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Update',updBal);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Update Balance',c);
+  }
+  if(S.modal==='addAircon'){
+    const c=D('');
+    const hi=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 8',value:S.airconF.hours});hi.oninput=e=>S.airconF.hours=e.target.value;setTimeout(()=>hi.focus(),50);c.appendChild(Fg('Hours Used',hi));
+    const di=Inp('',{type:'date',value:S.airconF.date});di.oninput=e=>S.airconF.date=e.target.value;c.appendChild(Fg('Date',di));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Log Usage',addAircon);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Aircon Usage',c);
+  }
+  if(S.modal==='airSet'){
+    const c=D('');
+    const ri=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.rate});ri.oninput=e=>S.airSetF.rate=e.target.value;c.appendChild(Fg('Meralco Rate (₱/kWh)',ri));
+    const si=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.startup});si.oninput=e=>S.airSetF.startup=e.target.value;c.appendChild(Fg('Startup Power (kWh for 1st hour)',si));
+    const rni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.running});rni.oninput=e=>S.airSetF.running=e.target.value;c.appendChild(Fg('Running Power (kWh per hour after)',rni));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save Settings',saveAirSet);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Aircon Config',c);
+  }
+  if(S.modal==='edit'&&S.editDraft){
+    const dr=S.editDraft,t=S.editType;
+    const c=D('');
+    if(t==='food'){
+      const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'Amount',value:dr.amount});ai.oninput=e=>dr.amount=e.target.value;setTimeout(()=>ai.focus(),50);c.appendChild(Fg('Amount (₱)',ai));
+      c.appendChild(Fg('Source',Sel(dr.source,FSRC,v=>{dr.source=v;})));
+      const ni=Inp('',{type:'text',placeholder:'Notes',value:dr.note||''});ni.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',ni));
+      const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
+    } else if(t==='home'){
+      const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+      const ai=Inp('',{type:'number',inputmode:'decimal',value:dr.amount});ai.oninput=e=>dr.amount=e.target.value;c.appendChild(Fg('Amount (₱)',ai));
+      c.appendChild(Fg('Category',Sel(dr.category||HCATS[0],HCATS,v=>{dr.category=v;})));
+      c.appendChild(Fg('Store',Sel(dr.store||STORES[0],STORES,v=>{dr.store=v;})));
+      const nt=Inp('',{type:'text',value:dr.note||''});nt.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',nt));
+      const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
+    } else if(t==='aircon'){
+      const hi=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 8',value:dr.hours});hi.oninput=e=>dr.hours=e.target.value;setTimeout(()=>hi.focus(),50);c.appendChild(Fg('Hours Used',hi));
+      const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
+    } else if(t==='price'){
+      const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+      const g2=D('g2');
+      const pfg=D('fg');pfg.appendChild(h('label',{cls:'fl'},'Price (₱)'));const pi=Inp('',{type:'number',inputmode:'decimal',value:dr.price});pi.oninput=e=>dr.price=e.target.value;pfg.appendChild(pi);g2.appendChild(pfg);
+      const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(dr.unit||'pcs',UNITS,v=>{dr.unit=v;}));g2.appendChild(ufg);c.appendChild(g2);
+      c.appendChild(Fg('Store',Sel(dr.store||STORES[0],STORES,v=>{dr.store=v;})));
+    } else if(t==='stock'){
+      const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+      c.appendChild(Fg('Category',Sel(dr.category||SCATS[0],SCATS,v=>{dr.category=v;})));
+      const g2=D('g2');
+      const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Quantity'));const qi=Inp('',{type:'number',inputmode:'decimal',value:dr.quantity});qi.oninput=e=>dr.quantity=e.target.value;qfg.appendChild(qi);g2.appendChild(qfg);
+      const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(dr.unit||'pcs',UNITS,v=>{dr.unit=v;}));g2.appendChild(ufg);c.appendChild(g2);
+      const mfg=D('fg');mfg.appendChild(h('label',{cls:'fl'},'Min Qty'));const mi=Inp('',{type:'number',inputmode:'decimal',value:dr.minQty});mi.oninput=e=>dr.minQty=e.target.value;mfg.appendChild(mi);c.appendChild(mfg);
+      const nt=Inp('',{type:'text',value:dr.note||''});nt.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',nt));
+    }
+    const ca=Btn('bg','Cancel',()=>set({modal:null,editType:null,editId:null,editDraft:null}));ca.style.flex='1';
+    const sa=Btn('bp','Save Changes',saveEdit);sa.style.flex='2';c.appendChild(Mr(ca,sa));
+    const labels={food:'Edit Food Expense',home:'Edit Home Expense',aircon:'Edit Aircon Usage',price:'Edit Price',stock:'Edit Stock Item'};
+    return M(labels[t]||'Edit',c);
+  }
+  return null;
+}
+
+// ─── MAIN RENDER ─────────────────────────────────────────────
+const TABS=[{id:'dash',icon:'🏠',label:'Home'},{id:'food',icon:'🍽️',label:'Food'},{id:'home',icon:'🧴',label:'Home'},{id:'bills',icon:'📋',label:'Bills'},{id:'aircon',icon:'❄️',label:'Aircon'},{id:'scan',icon:'📸',label:'Scan'}];
+const SCREEN_LABELS={dash:'Overview',food:'Food Expenses',home:'Home & Toiletries',bills:'Bills',prices:'Price Comparison',scan:'AI Scanner',reports:'📊 Reports',stocks:'📦 Stocks & Inventory',aircon:'Aircon Usage'};
+
+function render(){
+  openSw=null;
+  const root=document.getElementById('app');root.innerHTML='';
+  if(!S.geminiKey){root.style.background='#1b4d35';root.appendChild(renderSetup());return;}
+  root.style.background='#f7f3ee';
+  const app=D('');app.style.cssText='max-width:480px;margin:0 auto;min-height:100vh;background:#f7f3ee;padding-bottom:72px';
+  // Close swipe on tap outside
+  app.addEventListener('touchstart',e=>{if(openSw&&!openSw.contains(e.target)){const c=openSw.querySelector('.swc');if(c){c.style.transition='transform .15s ease';c.style.transform='';}openSw=null;}},{passive:true});
+  // Drawer
+  app.appendChild(renderDrawer());
+  // Header
+  const hdr=h('div',{cls:'hdr'});const hrow=h('div',{cls:'hrow'});
+  hrow.appendChild(h('button',{cls:'h-menu',onClick:()=>set({drawerOpen:true})},'☰'));
+  const hmid=D('h-mid');hmid.appendChild(Object.assign(D('htitle'),{textContent:SCREEN_LABELS[S.tab]||'Ipon Tracker'}));hmid.appendChild(Object.assign(D('hsub'),{textContent:'Budget · Prices · Savings'}));
+  const hbal=D('h-bal');hbal.appendChild(Object.assign(D('hbl'),{textContent:'Balance'}));hbal.appendChild(Object.assign(D('hbv'),{textContent:fmt(S.data.balance)}));
+  hrow.appendChild(hmid);hrow.appendChild(hbal);hdr.appendChild(hrow);app.appendChild(hdr);
+  // Content
+  let content;
+  if(S.tab==='dash')content=renderDash();
+  else if(S.tab==='food')content=renderFood();
+  else if(S.tab==='home')content=renderHome();
+  else if(S.tab==='bills')content=renderBills();
+  else if(S.tab==='prices')content=renderPrices();
+  else if(S.tab==='scan')content=renderScan();
+  else if(S.tab==='aircon')content=renderAircon();
+  else if(S.tab==='reports')content=renderReports();
+  else content=renderStocks();
+  app.appendChild(content);
+  // Tab bar (always visible)
+  const tb=D('tabbar');
+  TABS.forEach(t=>{
+    const on=S.tab===t.id;
+    const b=D('tb'+(on?' tb-on':''));
+    b.appendChild(Object.assign(D('tb-ic'),{textContent:t.icon}));
+    b.appendChild(Object.assign(D('tb-lb'+(on?' tb-lb-on':'')),{textContent:t.label}));
+    b.onclick=()=>set({tab:t.id});tb.appendChild(b);
+  });
+  app.appendChild(tb);
+  const modal=renderModal();if(modal)app.appendChild(modal);
+  root.appendChild(app);
+}
+
+render();
+</script>
+</body>
+</html>
