@@ -1,5 +1,5 @@
 // ─── CONSTANTS ───────────────────────────────────────────────
-const SK='ipon-v5', GK='ipon-gkey';
+const SK='ipon-v5', GK='ipon-gkey', SCHEMA_VERSION=2;
 const MODELS=['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash-lite','gemini-2.0-flash','gemini-1.5-flash-8b','gemini-1.5-flash'];
 const SCAN_PROMPT=`Analyze this image from the Philippines. It may be a receipt, order-details screenshot, price tag, shelf label, palengke sign, or menu.
 
@@ -9,14 +9,18 @@ Return ONLY a raw JSON array, no markdown:
 [{"name":"item","price":45.00,"qty":1,"unit":"kg/pcs/pack/etc","store":"infer or Unknown","category":"Food or Home","subcat":"Ulam (Viand) or Vegetables or Rice & Grains or Snacks or Drinks or Condiments & Sauces or Cleaning Supplies or Toiletries & Personal Care or Laundry or Kitchen Supplies or Medicine & First Aid or Others","note":"optional"}]
 
 If no prices found, return: []`;
-const FSRC=['Carinderia','Palengke/Home-cooked','Grab/Delivery','Fast Food','Restaurant','Sari-sari store','Others'];
+const FSRC=['Carinderia','Groceries','Palengke/Home-cooked','Grab/Delivery','Fast Food','Restaurant','Sari-sari store','Others'];
 const STORES=['Palengke','Supermarket','Puregold','SM Savemore','Robinsons','Shopee/Lazada','Sari-sari','Others'];
 const FCATS=['Ulam (Viand)','Vegetables','Rice & Grains','Snacks','Drinks','Condiments & Sauces','Others'];
 const HCATS=['Cleaning Supplies','Toiletries & Personal Care','Laundry','Kitchen Supplies','Bedding & Linen','Medicine & First Aid','Others'];
 const SCATS=['Food Staples','Cleaning','Toiletries','Medicine','Condiments','Kitchen','Others'];
 const UNITS=['pcs','kg','g','pack','can','bottle','bundle','sachet','box','litre','roll','pair','tali'];
 const APPLIANCE_CATS=['Cooling','Kitchen','Network','Security','Computer','Chargers','Lighting','Laundry','Others'];
-const DEFAULT_AIRCON_RATES={startup:1.20,sleepDay:0.60,sleepNight:0.42,day:0.85,night:0.55};
+const DEFAULT_AIRCON_RATES={startup:1.20,sleepDay:0.62,sleepNight:0.48,ecoDay:0.55,ecoNight:0.42,day:0.85,night:0.58};
+const AIRCON_MODES=['Sleep','Eco','Normal'];
+const AIRCON_MODEL_PROFILE={model:'Carrier 42CEA012308',outdoorModel:'38CEA012308',coolingKw:3.33,ratedWatts:1200,minWatts:200,maxWatts:1300,cspf:4.3,doeMonthlyKwh:162};
+const DEFAULT_WEATHER={provider:'open-meteo',label:'Las Pinas, Metro Manila',lat:14.46139,lon:120.97306,elevation:10,apiKey:''};
+const LABEL_DEFAULTS={foodSources:FSRC,homeCategories:HCATS,homeStores:STORES,applianceCategories:APPLIANCE_CATS};
 const DEFAULT_APPLIANCES=[
   {id:'ap1',name:'Samsung Wobble Top Load 7kg',category:'Laundry',watts:500,qty:1,hoursPerDay:0,daysPerMonth:0,sessionMinutes:45,alwaysOn:false,note:'Log per laundry session'},
   {id:'ap2',name:'Kettle Water Heater',category:'Kitchen',watts:1500,qty:1,hoursPerDay:0,daysPerMonth:0,sessionMinutes:7,alwaysOn:false,note:'Log per coffee boil'},
@@ -32,7 +36,11 @@ const fmt=n=>'₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:0,max
 const fmt2=n=>'₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt3=n=>'₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:3});
 const stockCatFromHome=cat=>cat==='Cleaning Supplies'?'Cleaning':cat==='Laundry'?'Cleaning':cat==='Toiletries & Personal Care'?'Toiletries':cat==='Medicine & First Aid'?'Medicine':cat==='Kitchen Supplies'?'Kitchen':'Others';
+const isGroceryTx=t=>t?.source==='Groceries';
 const stockFromHome=(item,id=uid())=>({id,name:item.name,category:stockCatFromHome(item.category),quantity:parseFloat(item.qty)||1,unit:item.unit||'pcs',minQty:0,note:[item.store,item.note].filter(Boolean).join(' · ')});
+const groceryName=tx=>String(tx.stockName||tx.note||'Groceries').split(' · ')[0].trim()||'Groceries';
+const stockCatFromFood=subcat=>subcat==='Condiments & Sauces'?'Condiments':'Food Staples';
+const stockFromGrocery=(tx,id=uid())=>({id,name:groceryName(tx),category:tx.stockCategory||stockCatFromFood(tx.subcat)||'Food Staples',quantity:parseFloat(tx.qty)||1,unit:tx.unit||'pcs',minQty:0,note:'From groceries'});
 const toStr=()=>new Date().toISOString().split('T')[0];
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const resizeImage=(file,maxW=1600,maxH=1600)=>new Promise((res,rej)=>{
@@ -92,27 +100,64 @@ function airconRates(data){
     startup:parseFloat(d.airconStartupRate)||DEFAULT_AIRCON_RATES.startup,
     sleepDay:parseFloat(d.airconSleepDayRate)||DEFAULT_AIRCON_RATES.sleepDay,
     sleepNight:parseFloat(d.airconSleepNightRate)||DEFAULT_AIRCON_RATES.sleepNight,
+    ecoDay:parseFloat(d.airconEcoDayRate)||DEFAULT_AIRCON_RATES.ecoDay,
+    ecoNight:parseFloat(d.airconEcoNightRate)||DEFAULT_AIRCON_RATES.ecoNight,
     day:parseFloat(d.airconDayRate)||DEFAULT_AIRCON_RATES.day,
     night:parseFloat(d.airconNightRate)||DEFAULT_AIRCON_RATES.night
   };
 }
-function airconRateForMinute(min,sleepMode,rates=airconRates()){const day=isDayMinute(min);return sleepMode?(day?rates.sleepDay:rates.sleepNight):(day?rates.day:rates.night);}
-function airconSessionFromMinutes(startMin,totalMinutes,sleepMode,date,start,end,rates=airconRates()){
-  const mins=Math.max(1,Math.round(totalMinutes));
-  let kwh=Math.min(60,mins)/60*rates.startup;
-  for(let i=60;i<mins;i++)kwh+=airconRateForMinute(startMin+i,sleepMode,rates)/60;
-  return{date,start,end,sleepMode:!!sleepMode,minutes:mins,hours:mins/60,kwh};
+function airconModeFrom(value,sleepMode){
+  const raw=String(value||'').toLowerCase();
+  if(raw==='eco'||raw==='normal'||raw==='sleep')return raw;
+  return sleepMode===false?'normal':'sleep';
 }
-function airconSessionFromParts(date,start,end,sleepMode=true,rates=airconRates()){
+function airconModeLabel(value,sleepMode){
+  const mode=airconModeFrom(value,sleepMode);
+  return mode==='eco'?'Eco':mode==='normal'?'Normal':'Sleep';
+}
+function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
+function numIn(v,fallback,min,max){const n=parseFloat(v);return isNaN(n)?fallback:clamp(n,min,max);}
+function airconTempFactor(tempC,data=S?.data){
+  const temp=parseFloat(tempC),baseline=parseFloat(data?.airconTempBaseline)||29,step=(parseFloat(data?.airconTempStepPct)||7)/100;
+  if(isNaN(temp))return 1;
+  return clamp(1+(baseline-temp)*step,0.75,1.35);
+}
+function airconOutdoorFactor(outdoorTemp,data=S?.data){
+  const temp=parseFloat(outdoorTemp),baseline=parseFloat(data?.airconOutdoorBaseline)||30,step=(parseFloat(data?.airconOutdoorStepPct)||2.5)/100;
+  if(isNaN(temp))return 1;
+  return clamp(1+(temp-baseline)*step,0.85,1.25);
+}
+function airconRateForMinute(min,mode='sleep',rates=airconRates(),tempC='',outdoorTemp='',data=S?.data){
+  const day=isDayMinute(min),m=airconModeFrom(mode);
+  const base=m==='eco'?(day?rates.ecoDay:rates.ecoNight):m==='normal'?(day?rates.day:rates.night):(day?rates.sleepDay:rates.sleepNight);
+  return base*airconTempFactor(tempC,data)*airconOutdoorFactor(outdoorTemp,data);
+}
+function airconSessionFromMinutes(startMin,totalMinutes,mode='sleep',date,start,end,rates=airconRates(),tempC='',outdoorTemp='',data=S?.data){
+  const mins=Math.max(1,Math.round(totalMinutes));
+  let kwh=0;
+  const useMode=airconModeFrom(mode);
+  for(let i=0;i<mins;i++){
+    const runRate=airconRateForMinute(startMin+i,useMode,rates,tempC,outdoorTemp,data);
+    const phaseRate=i<15?rates.startup:i<60?(rates.startup*(1-(i-15)/45)+runRate*((i-15)/45)):runRate;
+    kwh+=phaseRate/60;
+  }
+  return{date,start,end,mode:useMode,sleepMode:useMode==='sleep',minutes:mins,hours:mins/60,kwh};
+}
+function airconSessionFromParts(date,start,end,mode='sleep',rates=airconRates(),tempC='',outdoorTemp='',data=S?.data){
   const sm=minsOfDay(start),em=minsOfDay(end);if(isNaN(sm)||isNaN(em))return null;
   let total=em-sm;if(total<=0)total+=1440;
-  return airconSessionFromMinutes(sm,total,sleepMode,date,start,end,rates);
+  return airconSessionFromMinutes(sm,total,mode,date,start,end,rates,tempC,outdoorTemp,data);
 }
-function airconSessionFromDates(startDt,endDt,sleepMode=true,rates=airconRates()){
+function airconSessionFromDates(startDt,endDt,mode='sleep',rates=airconRates(),tempC='',outdoorTemp='',data=S?.data){
   const mins=Math.max(1,Math.round((endDt-startDt)/60000));
-  let kwh=Math.min(60,mins)/60*rates.startup;
-  for(let i=60;i<mins;i++){const dt=new Date(startDt.getTime()+i*60000);kwh+=airconRateForMinute(dt.getHours()*60+dt.getMinutes(),sleepMode,rates)/60;}
-  return{date:dateOf(startDt),start:timeOf(startDt),end:timeOf(endDt),sleepMode:!!sleepMode,minutes:mins,hours:mins/60,kwh};
+  let kwh=0;
+  const useMode=airconModeFrom(mode);
+  for(let i=0;i<mins;i++){
+    const dt=new Date(startDt.getTime()+i*60000),runRate=airconRateForMinute(dt.getHours()*60+dt.getMinutes(),useMode,rates,tempC,outdoorTemp,data);
+    const phaseRate=i<15?rates.startup:i<60?(rates.startup*(1-(i-15)/45)+runRate*((i-15)/45)):runRate;
+    kwh+=phaseRate/60;
+  }
+  return{date:dateOf(startDt),start:timeOf(startDt),end:timeOf(endDt),mode:useMode,sleepMode:useMode==='sleep',minutes:mins,hours:mins/60,kwh};
 }
 function applianceMonthly(a,rate=S?.data?.meralcoRate||14.3345){
   const watts=parseFloat(a.watts)||0,qty=parseFloat(a.qty)||1;
@@ -135,7 +180,7 @@ function activeElapsedMinutes(s,now=new Date()){return Math.max(1,Math.round((no
 function activeEstimate(s,now=new Date(),data=S?.data){
   const mins=activeElapsedMinutes(s,now);
   if(s.type==='aircon'){
-    const session=airconSessionFromDates(new Date(s.startedAt),now,s.sleepMode!==false,airconRates(data));
+    const session=airconSessionFromDates(new Date(s.startedAt),now,airconModeFrom(s.mode,s.sleepMode),airconRates(data),s.tempC,s.outdoorTemp,data);
     return{minutes:mins,kwh:session.kwh,cost:session.kwh*(data?.meralcoRate||14.3345)};
   }
   const watts=parseFloat(s.watts)||0,qty=parseFloat(s.qty)||1,kwh=watts*qty*(mins/60)/1000;
@@ -151,11 +196,61 @@ function meralcoKwhForCycle(cycle,data=S?.data){
   const bill=electricityBill(data);
   return parseFloat(bill?.monthlyKwh?.[billMonthFromCycle(cycle)])||0;
 }
-const INIT={balance:130000,transactions:[],homeExpenses:[],priceItems:[],stocks:[],bills:[{id:'b1',name:'Electricity',monthlyAmounts:{},monthlyKwh:{},paid:{}},{id:'b2',name:'WiFi / Internet',monthlyAmounts:{},paid:{}}],dailyBudget:380,
+function electricityCycleEstimate(cycle,data=S?.data){
+  const aircon=(data?.airconUsage||[]).filter(u=>inCycle(u,cycle));
+  const tv=(data?.tvUsage||[]).filter(u=>inCycle(u,cycle));
+  const applianceSessions=(data?.applianceUsage||[]).filter(u=>inCycle(u,cycle));
+  const airconKwh=aircon.reduce((s,u)=>s+(parseFloat(u.kwh)||0),0);
+  const tvKwh=tv.reduce((s,u)=>s+(parseFloat(u.kwh)||0),0);
+  const sessionKwh=applianceSessions.reduce((s,u)=>s+(parseFloat(u.kwh)||0),0);
+  const alwaysKwh=(data?.appliances||[]).reduce((s,a)=>s+applianceMonthly(a,data?.meralcoRate||14.3345).kwh,0)/30*cycleDays(cycle);
+  const totalKwh=airconKwh+tvKwh+sessionKwh+alwaysKwh;
+  return{airconKwh,tvKwh,sessionKwh,alwaysKwh,totalKwh,logs:aircon.length+tv.length+applianceSessions.length};
+}
+function weatherSettings(data=S?.data){
+  return{
+    provider:data?.weatherProvider||DEFAULT_WEATHER.provider,
+    label:data?.weatherLabel||DEFAULT_WEATHER.label,
+    lat:parseFloat(data?.weatherLat)||DEFAULT_WEATHER.lat,
+    lon:parseFloat(data?.weatherLon)||DEFAULT_WEATHER.lon,
+    elevation:parseFloat(data?.weatherElevation)||DEFAULT_WEATHER.elevation,
+    apiKey:data?.weatherApiKey||''
+  };
+}
+function weatherSummary(w=S?.data?.weather){
+  if(!w)return 'Weather not loaded';
+  const parts=[];
+  if(w.temp!=null)parts.push(`Outdoor ${Number(w.temp).toFixed(1)}C`);
+  if(w.apparent!=null)parts.push(`Feels ${Number(w.apparent).toFixed(1)}C`);
+  if(w.humidity!=null)parts.push(`Humidity ${Math.round(w.humidity)}%`);
+  return parts.join(' · ')||'Weather not loaded';
+}
+function weatherStale(data=S?.data){
+  const t=Date.parse(data?.weather?.fetchedAt||'');
+  return !t||Date.now()-t>15*60*1000;
+}
+function labelList(key,data=S?.data){
+  const custom=data?.labels?.[key];
+  return Array.isArray(custom)&&custom.length?custom:LABEL_DEFAULTS[key]||[];
+}
+const foodSources=(data=S?.data)=>labelList('foodSources',data);
+const homeCategories=(data=S?.data)=>labelList('homeCategories',data);
+const homeStores=(data=S?.data)=>labelList('homeStores',data);
+const applianceCategories=(data=S?.data)=>labelList('applianceCategories',data);
+const parseLabels=v=>[...new Set(String(v||'').split('\n').map(x=>x.trim()).filter(Boolean))];
+const INIT={schemaVersion:SCHEMA_VERSION,balance:130000,transactions:[],homeExpenses:[],priceItems:[],stocks:[],bills:[{id:'b1',name:'Electricity',monthlyAmounts:{},monthlyKwh:{},paid:{}},{id:'b2',name:'WiFi / Internet',monthlyAmounts:{},paid:{}}],dailyBudget:380,groceryBudget:5000,
   airconUsage:[],tvUsage:[],meralcoRate:14.3345,airconStartupKwh:1.2,airconRunningKwh:0.6,
-  airconStartupRate:1.20,airconSleepDayRate:0.60,airconSleepNightRate:0.42,airconDayRate:0.85,airconNightRate:0.55,airconDefaultSleepMode:true,airconDefaultTemp:'29',
+  airconStartupRate:1.20,airconSleepDayRate:0.62,airconSleepNightRate:0.48,airconEcoDayRate:0.55,airconEcoNightRate:0.42,airconDayRate:0.85,airconNightRate:0.58,airconDefaultSleepMode:true,airconDefaultMode:'sleep',airconDefaultTemp:'29',
+  airconModel:AIRCON_MODEL_PROFILE.model,airconTempBaseline:29,airconTempStepPct:7,airconOutdoorBaseline:30,airconOutdoorStepPct:2.5,
+  airconOutdoorModel:AIRCON_MODEL_PROFILE.outdoorModel,airconCoolingKw:AIRCON_MODEL_PROFILE.coolingKw,airconRatedWatts:AIRCON_MODEL_PROFILE.ratedWatts,airconMinWatts:AIRCON_MODEL_PROFILE.minWatts,airconMaxWatts:AIRCON_MODEL_PROFILE.maxWatts,airconCspf:AIRCON_MODEL_PROFILE.cspf,airconDoeMonthlyKwh:AIRCON_MODEL_PROFILE.doeMonthlyKwh,
+  weatherProvider:DEFAULT_WEATHER.provider,weatherLabel:DEFAULT_WEATHER.label,weatherLat:DEFAULT_WEATHER.lat,weatherLon:DEFAULT_WEATHER.lon,weatherElevation:DEFAULT_WEATHER.elevation,weatherApiKey:'',weather:null,
+  labels:LABEL_DEFAULTS,
   tvWatts:175,meralcoReadDay:12,appliances:DEFAULT_APPLIANCES,applianceUsage:[],activeSessions:[]};
 function ld(){try{const s=localStorage.getItem(SK);if(s){const d=JSON.parse(s);if(!d.stocks)d.stocks=[];if(!d.homeExpenses)d.homeExpenses=[];
+  d.schemaVersion=SCHEMA_VERSION;
+  if(!d.groceryBudget)d.groceryBudget=5000;
+  if(!d.labels)d.labels=JSON.parse(JSON.stringify(LABEL_DEFAULTS));
+  Object.keys(LABEL_DEFAULTS).forEach(k=>{if(!Array.isArray(d.labels[k])||!d.labels[k].length)d.labels[k]=LABEL_DEFAULTS[k];});
   if(!d.bills)d.bills=JSON.parse(JSON.stringify(INIT.bills));d.bills=(d.bills||[]).map(b=>({...b,monthlyAmounts:b.monthlyAmounts||{},paid:b.paid||{},...(String(b.name||'').toLowerCase().includes('electric')?{monthlyKwh:b.monthlyKwh||{}}:{})}));
   if(!d.airconUsage)d.airconUsage=[];if(!d.tvUsage)d.tvUsage=[];if(!d.meralcoRate||d.meralcoRate===12.03)d.meralcoRate=14.3345;
   if(!d.meralcoReadDay)d.meralcoReadDay=12;
@@ -166,11 +261,16 @@ function ld(){try{const s=localStorage.getItem(SK);if(s){const d=JSON.parse(s);i
   if(!d.airTimer)d.airTimer=null;
   if(!d.airconStartupKwh)d.airconStartupKwh=1.2;if(!d.airconRunningKwh)d.airconRunningKwh=0.6;if(!d.tvWatts||d.tvWatts===100)d.tvWatts=175;
   if(!d.airconStartupRate||d.airconStartupRate===0.75)d.airconStartupRate=DEFAULT_AIRCON_RATES.startup;
-  if(!d.airconSleepDayRate||d.airconSleepDayRate===0.30)d.airconSleepDayRate=DEFAULT_AIRCON_RATES.sleepDay;
-  if(!d.airconSleepNightRate||d.airconSleepNightRate===0.22)d.airconSleepNightRate=DEFAULT_AIRCON_RATES.sleepNight;
+  if(!d.airconSleepDayRate||d.airconSleepDayRate===0.30||d.airconSleepDayRate===0.60)d.airconSleepDayRate=DEFAULT_AIRCON_RATES.sleepDay;
+  if(!d.airconSleepNightRate||d.airconSleepNightRate===0.22||d.airconSleepNightRate===0.42)d.airconSleepNightRate=DEFAULT_AIRCON_RATES.sleepNight;
+  if(!d.airconEcoDayRate||d.airconEcoDayRate===0.52)d.airconEcoDayRate=DEFAULT_AIRCON_RATES.ecoDay;
+  if(!d.airconEcoNightRate||d.airconEcoNightRate===0.36)d.airconEcoNightRate=DEFAULT_AIRCON_RATES.ecoNight;
   if(!d.airconDayRate||d.airconDayRate===0.75)d.airconDayRate=DEFAULT_AIRCON_RATES.day;
-  if(!d.airconNightRate||d.airconNightRate===0.36)d.airconNightRate=DEFAULT_AIRCON_RATES.night;
-  if(d.airconDefaultSleepMode===undefined)d.airconDefaultSleepMode=true;if(d.airconDefaultTemp===undefined)d.airconDefaultTemp='29';
+  if(!d.airconNightRate||d.airconNightRate===0.36||d.airconNightRate===0.55)d.airconNightRate=DEFAULT_AIRCON_RATES.night;
+  if(!d.airconModel)d.airconModel=AIRCON_MODEL_PROFILE.model;if(!d.airconTempBaseline)d.airconTempBaseline=29;if(!d.airconTempStepPct)d.airconTempStepPct=7;if(!d.airconOutdoorBaseline)d.airconOutdoorBaseline=30;if(!d.airconOutdoorStepPct)d.airconOutdoorStepPct=2.5;
+  if(!d.airconOutdoorModel)d.airconOutdoorModel=AIRCON_MODEL_PROFILE.outdoorModel;if(!d.airconCoolingKw)d.airconCoolingKw=AIRCON_MODEL_PROFILE.coolingKw;if(!d.airconRatedWatts)d.airconRatedWatts=AIRCON_MODEL_PROFILE.ratedWatts;if(!d.airconMinWatts)d.airconMinWatts=AIRCON_MODEL_PROFILE.minWatts;if(!d.airconMaxWatts)d.airconMaxWatts=AIRCON_MODEL_PROFILE.maxWatts;if(!d.airconCspf)d.airconCspf=AIRCON_MODEL_PROFILE.cspf;if(!d.airconDoeMonthlyKwh)d.airconDoeMonthlyKwh=AIRCON_MODEL_PROFILE.doeMonthlyKwh;
+  if(!d.weatherProvider)d.weatherProvider=DEFAULT_WEATHER.provider;if(!d.weatherLabel)d.weatherLabel=DEFAULT_WEATHER.label;if(!d.weatherLat)d.weatherLat=DEFAULT_WEATHER.lat;if(!d.weatherLon)d.weatherLon=DEFAULT_WEATHER.lon;if(!d.weatherElevation)d.weatherElevation=DEFAULT_WEATHER.elevation;
+  if(d.airconDefaultSleepMode===undefined)d.airconDefaultSleepMode=true;if(!d.airconDefaultMode)d.airconDefaultMode=d.airconDefaultSleepMode===false?'normal':'sleep';if(d.airconDefaultTemp===undefined)d.airconDefaultTemp='29';
   return d;}}catch{}return JSON.parse(JSON.stringify(INIT));}
 function sd(d){try{localStorage.setItem(SK,JSON.stringify(d));}catch{}}
 function lk(){return localStorage.getItem(GK)||'';}
@@ -180,19 +280,22 @@ function sk(k){k?localStorage.setItem(GK,k):localStorage.removeItem(GK);}
 let S={
   tab:'dash',data:ld(),geminiKey:lk(),drawerOpen:false,
   modal:null,viewMk:curMk(),billsMk:curMk(),
-  airTimer:null,
+  airTimer:null,weatherLoading:false,weatherErr:'',
   // setup
   setupInput:'',setupErr:'',setupLoading:false,setupShow:false,
   // forms
-  txF:{amount:'',source:'Carinderia',note:'',date:toStr()},
-  homeF:{amount:'',unitPrice:'',qty:'1',unit:'pcs',category:'Cleaning Supplies',name:'',store:'Supermarket',note:'',date:toStr()},
+  txF:{amount:'',discount:'',source:'Carinderia',note:'',date:toStr(),qty:'1',unit:'pcs',stockCategory:'Food Staples'},
+  homeF:{amount:'',unitPrice:'',discount:'',qty:'1',unit:'pcs',category:'Cleaning Supplies',name:'',store:'Supermarket',note:'',date:toStr()},
   priceF:{name:'',store:'Palengke',price:'',unit:'pcs',category:'Food',subcat:'Ulam (Viand)',note:''},
   stockF:{name:'',category:'Food Staples',quantity:'',unit:'pcs',minQty:'1',note:''},
-  airconF:{date:toStr(),start:'22:00',end:'06:00',sleepMode:true,tempC:'29'},
+  airconF:{date:toStr(),start:'22:00',end:'06:00',mode:'sleep',sleepMode:true,tempC:'29',roomTemp:'',outdoorTemp:'',outdoorFeels:'',outdoorHumidity:''},
   tvF:{date:toStr(),start:'19:00',end:'22:00'},
   applianceF:{name:'',category:'Others',watts:'',qty:'1',sessionMinutes:'60',alwaysOn:false,note:''},
   applianceSessionF:{applianceId:'',date:toStr(),minutes:''},
-  airSetF:{rate:'',readDay:'',startup:'',sleepDay:'',sleepNight:'',day:'',night:'',defaultSleep:true,defaultTemp:'',tvWatts:''},
+  airSetF:{rate:'',readDay:'',startup:'',sleepDay:'',sleepNight:'',ecoDay:'',ecoNight:'',day:'',night:'',defaultMode:'sleep',defaultSleep:true,defaultTemp:'',tempBaseline:'29',tempStep:'7',outdoorBaseline:'30',outdoorStep:'2.5',tvWatts:''},
+  airconProfileF:{model:'',outdoorModel:'',coolingKw:'',ratedWatts:'',minWatts:'',maxWatts:'',cspf:'',doeMonthlyKwh:''},
+  settingsF:{geminiKey:'',weatherProvider:'open-meteo',weatherLabel:'',weatherLat:'',weatherLon:'',weatherElevation:'',weatherApiKey:''},
+  listsF:{foodSources:'',homeCategories:'',homeStores:'',applianceCategories:'',dailyBudget:'380',groceryBudget:'5000'},
   billF:{name:''},
   balInput:'',
   // scan
@@ -218,20 +321,40 @@ function ensureLiveTick(){
   if(!hasActive&&liveTick){clearInterval(liveTick);liveTick=null;}
 }
 
+async function updateWeather(force=false){
+  if(S.weatherLoading||(!force&&!weatherStale(S.data)))return;
+  const ws=weatherSettings(S.data);
+  if(ws.provider!=='open-meteo')return;
+  S.weatherLoading=true;S.weatherErr='';render();
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(ws.lat)}&longitude=${encodeURIComponent(ws.lon)}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&timezone=Asia%2FManila&forecast_days=1`;
+    const res=await fetch(url);
+    if(!res.ok)throw new Error('Weather request failed');
+    const json=await res.json(),cur=json.current||{};
+    const weather={source:'Open-Meteo',label:ws.label,lat:ws.lat,lon:ws.lon,elevation:ws.elevation,temp:cur.temperature_2m,humidity:cur.relative_humidity_2m,apparent:cur.apparent_temperature,wind:cur.wind_speed_10m,code:cur.weather_code,time:cur.time,fetchedAt:new Date().toISOString()};
+    S.weatherLoading=false;S.weatherErr='';
+    setD(d=>({...d,weather}));
+  }catch(e){
+    S.weatherLoading=false;S.weatherErr=e.message||'Weather unavailable';render();
+  }
+}
+function ensureWeather(){if(!S.modal&&!S.weatherLoading&&weatherStale(S.data))updateWeather();}
+
 // ─── ACTIONS ────────────────────────────────────────────────
 function addTx(){
-  const amt=parseFloat(S.txF.amount);if(!amt||amt<=0)return;
-  const tx={id:uid(),amount:amt,source:S.txF.source,note:S.txF.note,date:S.txF.date};
-  setD(d=>({...d,balance:d.balance-amt,transactions:[tx,...d.transactions]}));
-  set({txF:{amount:'',source:'Carinderia',note:'',date:toStr()},modal:null});
+  const gross=parseFloat(S.txF.amount),discount=Math.max(0,parseFloat(S.txF.discount)||0),amt=Math.max(0,gross-discount);if(!gross||gross<=0||amt<=0)return;
+  const isGroceries=S.txF.source==='Groceries',stockId=isGroceries?uid():null;
+  const tx={id:uid(),amount:amt,grossAmount:gross,discount,source:S.txF.source,note:S.txF.note,date:S.txF.date,...(isGroceries?{qty:parseFloat(S.txF.qty)||1,unit:S.txF.unit||'pcs',stockCategory:S.txF.stockCategory||'Food Staples',linkedStockId:stockId}:{})};
+  setD(d=>({...d,balance:d.balance-amt,transactions:[tx,...d.transactions],stocks:isGroceries?[...(d.stocks||[]),stockFromGrocery(tx,stockId)]:(d.stocks||[])}));
+  set({txF:{amount:'',discount:'',source:'Carinderia',note:'',date:toStr(),qty:'1',unit:'pcs',stockCategory:'Food Staples'},modal:null});
 }
-function delTx(id){const tx=S.data.transactions.find(t=>t.id===id);if(!tx)return;setD(d=>({...d,balance:d.balance+tx.amount,transactions:d.transactions.filter(t=>t.id!==id)}));}
+function delTx(id){const tx=S.data.transactions.find(t=>t.id===id);if(!tx)return;setD(d=>({...d,balance:d.balance+tx.amount,transactions:d.transactions.filter(t=>t.id!==id),stocks:tx.linkedStockId?(d.stocks||[]).filter(s=>s.id!==tx.linkedStockId):(d.stocks||[])}));}
 function addHome(){
-  const qty=parseFloat(S.homeF.qty)||1,unitPrice=parseFloat(S.homeF.unitPrice||S.homeF.amount),amt=unitPrice*qty;if(!amt||!S.homeF.name)return;
+  const qty=parseFloat(S.homeF.qty)||1,unitPrice=parseFloat(S.homeF.unitPrice||S.homeF.amount),gross=unitPrice*qty,discount=Math.max(0,parseFloat(S.homeF.discount)||0),amt=Math.max(0,gross-discount);if(!amt||!S.homeF.name)return;
   const stockId=uid();
-  const item={id:uid(),amount:amt,unitPrice,qty,unit:S.homeF.unit||'pcs',linkedStockId:stockId,category:S.homeF.category,name:S.homeF.name,store:S.homeF.store,note:S.homeF.note,date:S.homeF.date};
+  const item={id:uid(),amount:amt,grossAmount:gross,discount,unitPrice,qty,unit:S.homeF.unit||'pcs',linkedStockId:stockId,category:S.homeF.category,name:S.homeF.name,store:S.homeF.store,note:S.homeF.note,date:S.homeF.date};
   setD(d=>({...d,balance:d.balance-amt,homeExpenses:[item,...(d.homeExpenses||[])],stocks:[...(d.stocks||[]),stockFromHome(item,stockId)]}));
-  set({homeF:{amount:'',unitPrice:'',qty:'1',unit:'pcs',category:'Cleaning Supplies',name:'',store:'Supermarket',note:'',date:toStr()},modal:null});
+  set({homeF:{amount:'',unitPrice:'',discount:'',qty:'1',unit:'pcs',category:'Cleaning Supplies',name:'',store:'Supermarket',note:'',date:toStr()},modal:null});
 }
 function delHome(id){const e=(S.data.homeExpenses||[]).find(x=>x.id===id);if(!e)return;setD(d=>({...d,balance:d.balance+e.amount,homeExpenses:(d.homeExpenses||[]).filter(x=>x.id!==id),stocks:e.linkedStockId?(d.stocks||[]).filter(s=>s.id!==e.linkedStockId):(d.stocks||[])}));}
 function toggleSel(type,id){
@@ -245,8 +368,9 @@ function clearMulti(type){
 function delSelected(type){
   const ids=type==='food'?S.selFood:S.selHome;if(!ids.size)return;
   if(type==='food'){
-    const total=(S.data.transactions||[]).filter(t=>ids.has(t.id)).reduce((s,t)=>s+t.amount,0);
-    setD(d=>({...d,balance:d.balance+total,transactions:(d.transactions||[]).filter(t=>!ids.has(t.id))}));
+    const txs=(S.data.transactions||[]).filter(t=>ids.has(t.id));
+    const total=txs.reduce((s,t)=>s+t.amount,0),stockIds=new Set(txs.map(t=>t.linkedStockId).filter(Boolean));
+    setD(d=>({...d,balance:d.balance+total,transactions:(d.transactions||[]).filter(t=>!ids.has(t.id)),stocks:(d.stocks||[]).filter(s=>!stockIds.has(s.id))}));
   }else{
     const items=(S.data.homeExpenses||[]).filter(e=>ids.has(e.id));
     const total=items.reduce((s,e)=>s+e.amount,0),stockIds=new Set(items.map(e=>e.linkedStockId).filter(Boolean));
@@ -271,11 +395,15 @@ function delStock(id){setD(d=>({...d,stocks:(d.stocks||[]).filter(s=>s.id!==id)}
 function adjStock(id,delta){setD(d=>({...d,stocks:(d.stocks||[]).map(s=>s.id===id?{...s,quantity:Math.max(0,s.quantity+delta)}:s)}));}
 function addAircon(){
   const d=S.data,rates=airconRates(d);
-  const session=airconSessionFromParts(S.airconF.date,S.airconF.start,S.airconF.end,S.airconF.sleepMode!==false,rates);if(!session)return;
-  const cost=session.kwh*d.meralcoRate,tempC=parseFloat(S.airconF.tempC);
-  const entry={id:uid(),...session,hours:parseFloat(session.hours.toFixed(2)),kwh:session.kwh,cost,rateAtTime:d.meralcoRate,ratesAtTime:rates,tempC:isNaN(tempC)?'':tempC,formula:'two-phase-inverter'};
+  const mode=airconModeFrom(S.airconF.mode,S.airconF.sleepMode);
+  const tempC=parseFloat(S.airconF.tempC);
+  const roomTemp=parseFloat(S.airconF.roomTemp);
+  const outdoorTemp=parseFloat(S.airconF.outdoorTemp),outdoorFeels=parseFloat(S.airconF.outdoorFeels),outdoorHumidity=parseFloat(S.airconF.outdoorHumidity);
+  const session=airconSessionFromParts(S.airconF.date,S.airconF.start,S.airconF.end,mode,rates,isNaN(tempC)?'':tempC,isNaN(outdoorTemp)?'':outdoorTemp,d);if(!session)return;
+  const cost=session.kwh*d.meralcoRate;
+  const entry={id:uid(),...session,hours:parseFloat(session.hours.toFixed(2)),kwh:session.kwh,cost,rateAtTime:d.meralcoRate,ratesAtTime:rates,tempC:isNaN(tempC)?'':tempC,roomTemp:isNaN(roomTemp)?'':roomTemp,outdoorTemp:isNaN(outdoorTemp)?'':outdoorTemp,outdoorFeels:isNaN(outdoorFeels)?'':outdoorFeels,outdoorHumidity:isNaN(outdoorHumidity)?'':outdoorHumidity,weatherAtTime:d.weather||null,formula:'two-phase-inverter'};
   setD(d=>({...d,airconUsage:[entry,...(d.airconUsage||[])]}));
-  set({airconF:{date:toStr(),start:S.airconF.start,end:S.airconF.end,sleepMode:S.airconF.sleepMode!==false,tempC:S.airconF.tempC},modal:null});
+  set({airconF:{date:toStr(),start:S.airconF.start,end:S.airconF.end,mode,sleepMode:mode==='sleep',tempC:S.airconF.tempC,roomTemp:S.airconF.roomTemp,outdoorTemp:S.airconF.outdoorTemp,outdoorFeels:S.airconF.outdoorFeels,outdoorHumidity:S.airconF.outdoorHumidity},modal:null});
 }
 function delAircon(id){setD(d=>({...d,airconUsage:S.data.airconUsage.filter(x=>x.id!==id)}));}
 function addTv(){
@@ -314,8 +442,9 @@ function startActiveSession(type,opts={}){
   const exists=(d.activeSessions||[]).some(s=>s.type===type&&(type!=='appliance'||s.applianceId===opts.applianceId));
   if(exists)return;
   if(type==='aircon'){
-    const sleepMode=d.airconDefaultSleepMode!==false,tempC=parseFloat(d.airconDefaultTemp);
-    const s={id:uid(),type,name:'Aircon',startedAt:new Date().toISOString(),sleepMode,tempC:isNaN(tempC)?'':tempC};
+    const mode=airconModeFrom(d.airconDefaultMode,d.airconDefaultSleepMode),tempC=parseFloat(d.airconDefaultTemp);
+    const w=d.weather||{};
+    const s={id:uid(),type,name:'Aircon',startedAt:new Date().toISOString(),mode,sleepMode:mode==='sleep',tempC:isNaN(tempC)?'':tempC,roomTemp:'',outdoorTemp:w.temp??'',outdoorFeels:w.apparent??'',outdoorHumidity:w.humidity??'',weatherAtStart:w};
     setD(d=>({...d,activeSessions:[s,...(d.activeSessions||[])]}));
   }else if(type==='tv'){
     const watts=parseFloat(d.tvWatts)||175;
@@ -335,8 +464,9 @@ function stopActiveSession(id){
   setD(d=>{
     const activeSessions=(d.activeSessions||[]).filter(s=>s.id!==id);
     if(active.type==='aircon'){
-      const session=airconSessionFromDates(new Date(active.startedAt),now,active.sleepMode!==false,airconRates(d));
-      const entry={id:uid(),...session,hours:parseFloat(session.hours.toFixed(2)),kwh:session.kwh,cost:session.kwh*rate,rateAtTime:rate,ratesAtTime:airconRates(d),tempC:active.tempC??'',formula:'two-phase-inverter'};
+      const mode=airconModeFrom(active.mode,active.sleepMode);
+      const session=airconSessionFromDates(new Date(active.startedAt),now,mode,airconRates(d),active.tempC,active.outdoorTemp,d);
+      const entry={id:uid(),...session,hours:parseFloat(session.hours.toFixed(2)),kwh:session.kwh,cost:session.kwh*rate,rateAtTime:rate,ratesAtTime:airconRates(d),tempC:active.tempC??'',roomTemp:active.roomTemp??'',outdoorTemp:active.outdoorTemp??'',outdoorFeels:active.outdoorFeels??'',outdoorHumidity:active.outdoorHumidity??'',weatherAtTime:active.weatherAtStart||d.weather||null,formula:'two-phase-inverter'};
       return{...d,activeSessions,airconUsage:[entry,...(d.airconUsage||[])]};
     }
     const minutes=activeElapsedMinutes(active,now);
@@ -353,22 +483,96 @@ function stopActiveSession(id){
 }
 function saveAirSet(){
   setD(d=>({...d,
-    meralcoRate:parseFloat(S.airSetF.rate)||d.meralcoRate,
-    airconStartupRate:parseFloat(S.airSetF.startup)||d.airconStartupRate||DEFAULT_AIRCON_RATES.startup,
-    airconSleepDayRate:parseFloat(S.airSetF.sleepDay)||d.airconSleepDayRate||DEFAULT_AIRCON_RATES.sleepDay,
-    airconSleepNightRate:parseFloat(S.airSetF.sleepNight)||d.airconSleepNightRate||DEFAULT_AIRCON_RATES.sleepNight,
-    airconDayRate:parseFloat(S.airSetF.day)||d.airconDayRate||DEFAULT_AIRCON_RATES.day,
-    airconNightRate:parseFloat(S.airSetF.night)||d.airconNightRate||DEFAULT_AIRCON_RATES.night,
-    airconDefaultSleepMode:S.airSetF.defaultSleep!==false,
-    airconDefaultTemp:S.airSetF.defaultTemp||d.airconDefaultTemp||'29',
-    tvWatts:parseFloat(S.airSetF.tvWatts)||d.tvWatts||175,
+    meralcoRate:numIn(S.airSetF.rate,d.meralcoRate||14.3345,1,100),
+    airconStartupRate:numIn(S.airSetF.startup,d.airconStartupRate||DEFAULT_AIRCON_RATES.startup,0.05,3),
+    airconSleepDayRate:numIn(S.airSetF.sleepDay,d.airconSleepDayRate||DEFAULT_AIRCON_RATES.sleepDay,0.05,3),
+    airconSleepNightRate:numIn(S.airSetF.sleepNight,d.airconSleepNightRate||DEFAULT_AIRCON_RATES.sleepNight,0.05,3),
+    airconEcoDayRate:numIn(S.airSetF.ecoDay,d.airconEcoDayRate||DEFAULT_AIRCON_RATES.ecoDay,0.05,3),
+    airconEcoNightRate:numIn(S.airSetF.ecoNight,d.airconEcoNightRate||DEFAULT_AIRCON_RATES.ecoNight,0.05,3),
+    airconDayRate:numIn(S.airSetF.day,d.airconDayRate||DEFAULT_AIRCON_RATES.day,0.05,3),
+    airconNightRate:numIn(S.airSetF.night,d.airconNightRate||DEFAULT_AIRCON_RATES.night,0.05,3),
+    airconDefaultMode:airconModeFrom(S.airSetF.defaultMode,S.airSetF.defaultSleep),
+    airconDefaultSleepMode:airconModeFrom(S.airSetF.defaultMode,S.airSetF.defaultSleep)==='sleep',
+    airconDefaultTemp:numIn(S.airSetF.defaultTemp,d.airconDefaultTemp||29,16,32),
+    airconTempBaseline:numIn(S.airSetF.tempBaseline,d.airconTempBaseline||29,16,32),
+    airconTempStepPct:numIn(S.airSetF.tempStep,d.airconTempStepPct||7,0,20),
+    airconOutdoorBaseline:numIn(S.airSetF.outdoorBaseline,d.airconOutdoorBaseline||30,15,45),
+    airconOutdoorStepPct:numIn(S.airSetF.outdoorStep,d.airconOutdoorStepPct||2.5,0,10),
+    tvWatts:numIn(S.airSetF.tvWatts,d.tvWatts||175,1,1000),
     meralcoReadDay:Math.max(1,Math.min(31,parseInt(S.airSetF.readDay)||d.meralcoReadDay||12))
   }));
   set({modal:null});
 }
+function airconProfile(data=S.data){
+  return{
+    model:data.airconModel||AIRCON_MODEL_PROFILE.model,
+    outdoorModel:data.airconOutdoorModel||AIRCON_MODEL_PROFILE.outdoorModel,
+    coolingKw:parseFloat(data.airconCoolingKw)||AIRCON_MODEL_PROFILE.coolingKw,
+    ratedWatts:parseFloat(data.airconRatedWatts)||AIRCON_MODEL_PROFILE.ratedWatts,
+    minWatts:parseFloat(data.airconMinWatts)||AIRCON_MODEL_PROFILE.minWatts,
+    maxWatts:parseFloat(data.airconMaxWatts)||AIRCON_MODEL_PROFILE.maxWatts,
+    cspf:parseFloat(data.airconCspf)||AIRCON_MODEL_PROFILE.cspf,
+    doeMonthlyKwh:parseFloat(data.airconDoeMonthlyKwh)||AIRCON_MODEL_PROFILE.doeMonthlyKwh
+  };
+}
+function openAirconProfile(){
+  const p=airconProfile();
+  set({modal:'airconProfile',airconProfileF:{...p}});
+}
+function saveAirconProfile(){
+  const p=S.airconProfileF||{};
+  setD(d=>({...d,
+    airconModel:p.model||AIRCON_MODEL_PROFILE.model,
+    airconOutdoorModel:p.outdoorModel||AIRCON_MODEL_PROFILE.outdoorModel,
+    airconCoolingKw:parseFloat(p.coolingKw)||AIRCON_MODEL_PROFILE.coolingKw,
+    airconRatedWatts:parseFloat(p.ratedWatts)||AIRCON_MODEL_PROFILE.ratedWatts,
+    airconMinWatts:parseFloat(p.minWatts)||AIRCON_MODEL_PROFILE.minWatts,
+    airconMaxWatts:parseFloat(p.maxWatts)||AIRCON_MODEL_PROFILE.maxWatts,
+    airconCspf:parseFloat(p.cspf)||AIRCON_MODEL_PROFILE.cspf,
+    airconDoeMonthlyKwh:parseFloat(p.doeMonthlyKwh)||AIRCON_MODEL_PROFILE.doeMonthlyKwh
+  }));
+  set({modal:null});
+}
+function openSettings(){
+  const ws=weatherSettings(S.data);
+  set({modal:'settings',drawerOpen:false,settingsF:{geminiKey:S.geminiKey,weatherProvider:ws.provider,weatherLabel:ws.label,weatherLat:String(ws.lat),weatherLon:String(ws.lon),weatherElevation:String(ws.elevation),weatherApiKey:ws.apiKey||''}});
+}
+function openListsDefaults(){
+  const d=S.data;
+  set({modal:'listsDefaults',listsF:{
+    foodSources:foodSources(d).join('\n'),
+    homeCategories:homeCategories(d).join('\n'),
+    homeStores:homeStores(d).join('\n'),
+    applianceCategories:applianceCategories(d).join('\n'),
+    dailyBudget:String(d.dailyBudget||380),
+    groceryBudget:String(d.groceryBudget||5000)
+  }});
+}
+function saveListsDefaults(){
+  const f=S.listsF||{};
+  const labels={
+    foodSources:parseLabels(f.foodSources),
+    homeCategories:parseLabels(f.homeCategories),
+    homeStores:parseLabels(f.homeStores),
+    applianceCategories:parseLabels(f.applianceCategories)
+  };
+  Object.keys(LABEL_DEFAULTS).forEach(k=>{if(!labels[k].length)labels[k]=LABEL_DEFAULTS[k];});
+  setD(d=>({...d,labels,dailyBudget:numIn(f.dailyBudget,d.dailyBudget||380,50,2000),groceryBudget:numIn(f.groceryBudget,d.groceryBudget||5000,0,50000)}));
+  set({modal:null});
+}
+function saveSettings(){
+  const f=S.settingsF||{},key=(f.geminiKey||'').trim();
+  sk(key);
+  const old=weatherSettings(S.data);
+  const next={provider:f.weatherProvider||'open-meteo',label:f.weatherLabel||DEFAULT_WEATHER.label,lat:parseFloat(f.weatherLat)||DEFAULT_WEATHER.lat,lon:parseFloat(f.weatherLon)||DEFAULT_WEATHER.lon,elevation:parseFloat(f.weatherElevation)||DEFAULT_WEATHER.elevation,apiKey:f.weatherApiKey||''};
+  const changed=old.lat!==next.lat||old.lon!==next.lon||old.provider!==next.provider;
+  setD(d=>({...d,weatherProvider:next.provider,weatherLabel:next.label,weatherLat:next.lat,weatherLon:next.lon,weatherElevation:next.elevation,weatherApiKey:next.apiKey,weather:changed?null:d.weather}));
+  set({geminiKey:key,modal:null,weatherErr:''});
+  setTimeout(()=>updateWeather(true),50);
+}
 function exportData(){
   const blob=new Blob([JSON.stringify(S.data,null,2)],{type:'application/json'});
-  const a=h('a',{href:URL.createObjectURL(blob),download:`ipon-tracker-${toStr()}.json`});
+  const a=h('a',{href:URL.createObjectURL(blob),download:`budget-tracker-${toStr()}.json`});
   a.click();
 }
 function importData(e){
@@ -400,16 +604,34 @@ function saveEdit(){
   const{editType:t,editId:id,editDraft:dr}=S;
   if(t==='food'){
     const old=S.data.transactions.find(x=>x.id===id);
-    const newAmt=parseFloat(dr.amount)||old.amount;
+    const gross=parseFloat(dr.grossAmount??dr.amount)||old.grossAmount||old.amount;
+    const discount=Math.max(0,parseFloat(dr.discount)||0);
+    const newAmt=Math.max(0,gross-discount)||old.amount;
     const delta=newAmt-old.amount;
-    setD(d=>({...d,balance:d.balance-delta,transactions:d.transactions.map(x=>x.id===id?{...x,...dr,amount:newAmt}:x)}));
+    setD(d=>{
+      let stocks=[...(d.stocks||[])];
+      let updated={...old,...dr,grossAmount:gross,discount,amount:newAmt};
+      if(updated.source==='Groceries'&&!updated.linkedStockId){
+        const stockId=uid();
+        updated={...updated,linkedStockId:stockId,qty:parseFloat(updated.qty)||1,unit:updated.unit||'pcs',stockCategory:updated.stockCategory||'Food Staples'};
+        stocks.push(stockFromGrocery(updated,stockId));
+      }else if(updated.source!=='Groceries'&&updated.linkedStockId){
+        stocks=stocks.filter(s=>s.id!==updated.linkedStockId);
+        const{linkedStockId,stockName,stockCategory,qty,unit,subcat,...rest}=updated;
+        updated=rest;
+      }else if(updated.source==='Groceries'&&updated.linkedStockId){
+        stocks=stocks.map(s=>s.id===updated.linkedStockId?{...s,...stockFromGrocery(updated,updated.linkedStockId)}:s);
+      }
+      return {...d,balance:d.balance-delta,transactions:d.transactions.map(x=>x.id===id?updated:x),stocks};
+    });
   } else if(t==='home'){
     const old=(S.data.homeExpenses||[]).find(x=>x.id===id);
     const qty=parseFloat(dr.qty)||1;
     const unitPrice=parseFloat(dr.unitPrice)||parseFloat(dr.amount)||old.unitPrice||old.amount;
-    const newAmt=unitPrice*qty;
+    const gross=unitPrice*qty,discount=Math.max(0,parseFloat(dr.discount)||0);
+    const newAmt=Math.max(0,gross-discount);
     const delta=newAmt-old.amount;
-    const updated={...old,...dr,qty,unitPrice,amount:newAmt,unit:dr.unit||old.unit||'pcs'};
+    const updated={...old,...dr,qty,unitPrice,grossAmount:gross,discount,amount:newAmt,unit:dr.unit||old.unit||'pcs'};
     setD(d=>{
       let stocks=d.stocks||[];
       if(updated.linkedStockId){
@@ -421,10 +643,14 @@ function saveEdit(){
   } else if(t==='aircon'){
     const old=(S.data.airconUsage||[]).find(x=>x.id===id);
     const rates=airconRates(S.data);
-    const session=airconSessionFromParts(dr.date||old.date,dr.start||old.start||'22:00',dr.end||old.end||'06:00',dr.sleepMode!==false,rates);
+    const mode=airconModeFrom(dr.mode,dr.sleepMode);
+    const tempC=parseFloat(dr.tempC);
+    const roomTemp=parseFloat(dr.roomTemp);
+    const outdoorTemp=parseFloat(dr.outdoorTemp);
+    const session=airconSessionFromParts(dr.date||old.date,dr.start||old.start||'22:00',dr.end||old.end||'06:00',mode,rates,isNaN(tempC)?'':tempC,isNaN(outdoorTemp)?'':outdoorTemp,S.data);
     if(!session)return;
-    const newCost=session.kwh*S.data.meralcoRate,tempC=parseFloat(dr.tempC);
-    setD(d=>({...d,airconUsage:(d.airconUsage||[]).map(x=>x.id===id?{...old,...dr,...session,hours:parseFloat(session.hours.toFixed(2)),kwh:session.kwh,cost:newCost,rateAtTime:S.data.meralcoRate,ratesAtTime:rates,tempC:isNaN(tempC)?'':tempC,formula:'two-phase-inverter'}:x)}));
+    const newCost=session.kwh*S.data.meralcoRate;
+    setD(d=>({...d,airconUsage:(d.airconUsage||[]).map(x=>x.id===id?{...old,...dr,...session,mode,sleepMode:mode==='sleep',hours:parseFloat(session.hours.toFixed(2)),kwh:session.kwh,cost:newCost,rateAtTime:S.data.meralcoRate,ratesAtTime:rates,tempC:isNaN(tempC)?'':tempC,roomTemp:isNaN(roomTemp)?'':roomTemp,formula:'two-phase-inverter'}:x)}));
   } else if(t==='tv'){
     const old=(S.data.tvUsage||[]).find(x=>x.id===id);
     if(!dr.start)dr.start=old.start||'19:00';if(!dr.end)dr.end=old.end||timePlus(dr.start,(parseFloat(dr.hours)||1)*60)||'22:00';
@@ -457,7 +683,26 @@ function saveBatchEdit(){
   const type=S.batchType,dr=S.batchDraft||{},ids=type==='food'?S.selFood:S.selHome;
   if(!ids?.size){set({modal:null,batchType:null,batchDraft:null});return;}
   if(type==='food'){
-    setD(d=>({...d,transactions:(d.transactions||[]).map(t=>ids.has(t.id)?{...t,source:dr.source||t.source,date:dr.date||t.date,note:dr.note?dr.note:t.note}:t)}));
+    setD(d=>{
+      let stocks=[...(d.stocks||[])];
+      const transactions=(d.transactions||[]).map(t=>{
+        if(!ids.has(t.id))return t;
+        let next={...t,source:dr.source||t.source,date:dr.date||t.date,note:dr.note?dr.note:t.note};
+        if(next.source==='Groceries'&&!next.linkedStockId){
+          const stockId=uid();
+          next={...next,linkedStockId:stockId,qty:parseFloat(next.qty)||1,unit:next.unit||'pcs',stockCategory:next.stockCategory||'Food Staples'};
+          stocks.push(stockFromGrocery(next,stockId));
+        }else if(next.source!=='Groceries'&&next.linkedStockId){
+          stocks=stocks.filter(s=>s.id!==next.linkedStockId);
+          const{linkedStockId,stockName,stockCategory,qty,unit,subcat,...rest}=next;
+          next=rest;
+        }else if(next.source==='Groceries'&&next.linkedStockId){
+          stocks=stocks.map(s=>s.id===next.linkedStockId?{...s,...stockFromGrocery(next,next.linkedStockId)}:s);
+        }
+        return next;
+      });
+      return {...d,transactions,stocks};
+    });
   }else{
     setD(d=>{
       const homeExpenses=(d.homeExpenses||[]).map(e=>ids.has(e.id)?{...e,category:dr.category||e.category,store:dr.store||e.store,date:dr.date||e.date,note:dr.note?dr.note:e.note}:e);
@@ -514,7 +759,8 @@ async function setupKey(){
   }
 }
 async function doScan(){
-  if(!S.scanImg||!S.geminiKey)return;
+  if(!S.geminiKey){set({scanErr:'Set your Gemini API key in Settings to enable AI scanning.'});return;}
+  if(!S.scanImg)return;
   set({scanning:true,scanErr:'',scanData:null});
   const quotaErrors=[];
   for(const model of MODELS){
@@ -542,9 +788,11 @@ function addScanned(item,idx,dest){
   if(dest==='price'){
     setD(d=>({...d,priceItems:[...(d.priceItems||[]),{id:uid(),name:item.name,store:item.store||'Unknown',price,unit:item.unit||'pcs',category:item.category||'Food',subcat:item.subcat||'Others',note:note||'From scan',addedAt:new Date().toISOString()}]}));
   } else if(dest==='food'){
-    setD(d=>({...d,balance:d.balance-total,transactions:[{id:uid(),amount:total,source:FSRC.includes(item.store)?item.store:'Others',note:[item.name,note].filter(Boolean).join(' · '),date:toStr()},...(d.transactions||[])]}));
+    const source=foodSources().includes(item.store)&&item.store!=='Others'?item.store:'Groceries',isGrocery=source==='Groceries',stockId=isGrocery?uid():null;
+    const tx={id:uid(),amount:total,source,note:[item.name,note].filter(Boolean).join(' · '),...(isGrocery?{stockName:item.name,qty,unit:item.unit||'pcs',stockCategory:stockCatFromFood(item.subcat),subcat:item.subcat||'',linkedStockId:stockId}:{}),date:toStr()};
+    setD(d=>({...d,balance:d.balance-total,transactions:[tx,...(d.transactions||[])],stocks:isGrocery?[...(d.stocks||[]),stockFromGrocery(tx,stockId)]:(d.stocks||[])}));
   } else if(dest==='home'){
-    const cat=HCATS.includes(item.subcat)?item.subcat:(HCATS.includes(item.category)?item.category:'Toiletries & Personal Care');
+    const hcats=homeCategories(),cat=hcats.includes(item.subcat)?item.subcat:(hcats.includes(item.category)?item.category:'Toiletries & Personal Care');
     const stockId=uid();
     const homeItem={id:uid(),amount:total,unitPrice:price,qty,unit:item.unit||'pcs',linkedStockId:stockId,category:cat,name:item.name,store:item.store||'Others',note:note||'From scan',date:toStr()};
     setD(d=>({...d,balance:d.balance-total,homeExpenses:[homeItem,...(d.homeExpenses||[])],stocks:[...(d.stocks||[]),stockFromHome(homeItem,stockId)]}));
@@ -572,6 +820,18 @@ const Sel=(val,opts,fn,cls='')=>{const el=h('select',{cls:'sel '+cls});opts.forE
 const Fg=(lbl,el,sub)=>{const f=D('fg');f.appendChild(h('label',{cls:'fl'},lbl));f.appendChild(el);if(sub)f.appendChild(h('div',{style:'font-size:10px;color:#8a7260;margin-top:2px'},sub));return f;};
 const Mr=(...bs)=>{const r=D('mr');bs.forEach(b=>r.appendChild(b));return r;};
 const DivHdr=(t)=>{const d=D('');d.style.cssText='padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';d.appendChild(h('span',{style:'font-weight:700;font-size:13px'},t));return d;};
+function metricTiles(items,compact=false){
+  const grid=D('');
+  grid.style.cssText=`display:grid;grid-template-columns:repeat(${items.length},minmax(0,1fr));gap:${compact?'4px':'6px'};margin-top:${compact?'6px':'8px'}`;
+  items.forEach(it=>{
+    const tile=D('');
+    tile.style.cssText=`background:#faf6f1;border:1px solid #e2d9ce;border-radius:8px;padding:${compact?'5px 4px':'7px 6px'};min-width:0;text-align:center`;
+    tile.appendChild(h('div',{style:`font-size:${compact?'7.5px':'8.5px'};color:#8a7260;font-weight:800;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`},it.label));
+    tile.appendChild(h('div',{cls:'sf',style:`font-size:${compact?'10.5px':'13px'};color:${it.color||'#3a2818'};margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`},it.value));
+    grid.appendChild(tile);
+  });
+  return grid;
+}
 function Time12Control(value,onChange){
   const p=time12Parts(value),wrap=D('');
   wrap.style.cssText='display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px';
@@ -628,17 +888,20 @@ function calc(){
   const bTotal=data.bills.reduce((s,b)=>s+(b.monthlyAmounts[cm]||0),0);
   const bUnpaid=data.bills.filter(b=>!b.paid[cm]).reduce((s,b)=>s+(b.monthlyAmounts[cm]||0),0);
   const d7=new Date(now.getTime()-7*86400000);
-  const rec=data.transactions.filter(t=>new Date(t.date)>=d7);
+  const meals=(data.transactions||[]).filter(t=>!isGroceryTx(t));
+  const groceries=(data.transactions||[]).filter(isGroceryTx);
+  const rec=meals.filter(t=>new Date(t.date)>=d7);
   const avgD=rec.length?rec.reduce((s,t)=>s+t.amount,0)/7:data.dailyBudget;
+  const groceryMonth=groceries.filter(t=>mk(t.date)===cm).reduce((s,t)=>s+t.amount,0);
   const mBurn=bTotal+avgD*30;
   const runway=mBurn>0?Math.floor(data.balance/(mBurn/30)):9999;
-  const todayS=data.transactions.filter(t=>t.date===toStr()).reduce((s,t)=>s+t.amount,0);
-  const chart=Array.from({length:7},(_,i)=>{const dd=new Date(now.getTime()-(6-i)*86400000),ds=dd.toISOString().split('T')[0];return{label:chartLbl(dd),spend:data.transactions.filter(t=>t.date===ds).reduce((s,t)=>s+t.amount,0),ds};});
+  const todayS=meals.filter(t=>t.date===toStr()).reduce((s,t)=>s+t.amount,0);
+  const chart=Array.from({length:7},(_,i)=>{const dd=new Date(now.getTime()-(6-i)*86400000),ds=dd.toISOString().split('T')[0];return{label:chartLbl(dd),spend:meals.filter(t=>t.date===ds).reduce((s,t)=>s+t.amount,0),ds};});
   const maxS=Math.max(...chart.map(x=>x.spend),data.dailyBudget,1);
-  return{bTotal,bUnpaid,avgD,mBurn,runway,todayS,chart,maxS};
+  return{bTotal,bUnpaid,avgD,mBurn,runway,todayS,groceryMonth,chart,maxS};
 }
 function pGroups(){
-  const f=S.data.priceItems.filter(p=>{const mc=S.pCat==='All'||p.category===S.pCat;const ms=!S.pSearch||p.name.toLowerCase().includes(S.pSearch.toLowerCase());return mc&&ms;});
+  const f=S.data.priceItems.filter(p=>S.pCat==='All'||p.category===S.pCat);
   const g=f.reduce((acc,item)=>{const key=item.name.toLowerCase().trim();if(!acc[key])acc[key]={display:item.name,items:[]};acc[key].items.push(item);return acc;},{});
   Object.values(g).forEach(x=>x.items.sort((a,b)=>a.price-b.price));
   return Object.values(g).sort((a,b)=>a.display.localeCompare(b.display));
@@ -648,7 +911,7 @@ function pGroups(){
 function renderSetup(){
   const wrap=D('setup');
   const logo=D('s-logo');logo.textContent='₱';
-  const title=D('s-title');title.textContent='Ipon Tracker';
+  const title=D('s-title');title.textContent='Budget Tracker';
   const sub=D('s-sub');sub.textContent='Enter your free Gemini API key to unlock AI price scanning.\nYour key is stored only on your device.';
   const card=D('s-card');
   card.appendChild(Object.assign(D('s-ct'),{textContent:'🔑 Gemini API Key (Free)'}));
@@ -679,7 +942,7 @@ function renderDrawer(){
   const drawer=D('drawer'+(S.drawerOpen?' open':''));
   const dov=D('dov'+(S.drawerOpen?' show':''));
   dov.onclick=()=>set({drawerOpen:false});
-  const dhdr=D('dr-hdr');dhdr.appendChild(Object.assign(D('dr-title'),{textContent:'Ipon Tracker 🇵🇭'}));dhdr.appendChild(Object.assign(D('dr-sub'),{textContent:'Budget · Prices · Savings'}));drawer.appendChild(dhdr);
+  const dhdr=D('dr-hdr');dhdr.appendChild(Object.assign(D('dr-title'),{textContent:'Budget Tracker 🇵🇭'}));dhdr.appendChild(Object.assign(D('dr-sub'),{textContent:'Budget · Prices · Savings'}));drawer.appendChild(dhdr);
   const items=D('dr-items');
   const drItem=(icon,lbl,sub,fn,active)=>{
     const it=h('button',{cls:'dr-item'+(active?' dr-item-active':''),onClick:fn});
@@ -696,14 +959,14 @@ function renderDrawer(){
   items.appendChild(drItem('🔌','Appliance Manager','Add, edit, delete appliances',()=>set({tab:'appliances',drawerOpen:false}),S.tab==='appliances'));
   items.appendChild(D('dr-sep'));
   items.appendChild(drItem('📊','Reports','Monthly spending breakdown',()=>set({tab:'reports',drawerOpen:false}),S.tab==='reports'));
-  items.appendChild(drItem('📦','Stocks & Inventory','Track what you have at home',()=>set({tab:'stocks',drawerOpen:false}),S.tab==='stocks'));
+  items.appendChild(drItem('📦','Pantry & Stocks','Track what you have at home',()=>set({tab:'stocks',drawerOpen:false}),S.tab==='stocks'));
   items.appendChild(D('dr-sep'));
   const exp=drItem('📤','Export Data','Save backup to file',exportData);items.appendChild(exp);
   const imp=drItem('📥','Import Data','Restore from backup',()=>{
     const fi=h('input',{type:'file',accept:'.json',onchange:importData});fi.click();
   });items.appendChild(imp);
   items.appendChild(D('dr-sep'));
-  items.appendChild(drItem('🔑','Change API Key','Update your Gemini key',()=>{sk('');set({geminiKey:'',setupInput:'',setupErr:'',drawerOpen:false});}));
+  items.appendChild(drItem('⚙️','Settings','API keys & location',openSettings,false));
   drawer.appendChild(items);
   const frag=document.createDocumentFragment();frag.appendChild(dov);frag.appendChild(drawer);
   return frag;
@@ -711,7 +974,7 @@ function renderDrawer(){
 
 // ─── DASHBOARD ──────────────────────────────────────────────
 function renderDash(){
-  const {bTotal,avgD,mBurn,runway,todayS,chart,maxS}=calc();
+  const {bTotal,avgD,mBurn,runway,todayS,groceryMonth,chart,maxS}=calc();
   const eCycle=cycleForDate(new Date(),meralcoReadDay(S.data));
   const airconCost = (S.data.airconUsage || []).filter(u => inCycle(u,eCycle)).reduce((s, u) => s + u.cost, 0);
   const tvCost = (S.data.tvUsage || []).filter(u => inCycle(u,eCycle)).reduce((s, u) => s + u.cost, 0);
@@ -739,24 +1002,37 @@ function renderDash(){
   // Stats
   const g2=D('g2');g2.style.marginBottom='9px';
   const ob=todayS>data.dailyBudget;
-  const c1=D('card');c1.innerHTML=`<div class="cp"><div class="lbl">Today's Spending</div><div class="sf" style="font-size:23px;color:${ob?'#b83030':'#3a2818'};margin:2px 0">${fmt(todayS)}</div><div style="font-size:10.5px;color:#8a7260">Budget: ${fmt(data.dailyBudget)}</div>${ob?'<div style="font-size:10px;color:#b83030;font-weight:700;margin-top:1px">⚠️ Over budget</div>':''}</div>`;
-  const c2=D('card');c2.innerHTML=`<div class="cp"><div class="lbl">Monthly Burn</div><div class="sf" style="font-size:23px;margin:2px 0">${fmt(Math.round(mBurn))}</div><div style="font-size:10.5px;color:#8a7260">Bills + food avg</div></div>`;
+  const c1=D('card');c1.innerHTML=`<div class="cp"><div class="lbl">Today's Meals</div><div class="sf" style="font-size:23px;color:${ob?'#b83030':'#3a2818'};margin:2px 0">${fmt(todayS)}</div><div style="font-size:10.5px;color:#8a7260">Daily budget: ${fmt(data.dailyBudget)}</div>${ob?'<div style="font-size:10px;color:#b83030;font-weight:700;margin-top:1px">⚠️ Over budget</div>':''}</div>`;
+  const c2=D('card');c2.innerHTML=`<div class="cp"><div class="lbl">Groceries This Month</div><div class="sf" style="font-size:23px;color:${groceryMonth>(data.groceryBudget||5000)?'#b83030':'#3a2818'};margin:2px 0">${fmt(groceryMonth)}</div><div style="font-size:10.5px;color:#8a7260">Monthly budget: ${fmt(data.groceryBudget||5000)}</div></div>`;
   g2.appendChild(c1);g2.appendChild(c2);sec.appendChild(g2);
+  const w=data.weather,ws=weatherSettings(data);
+  const wc=D('card');wc.innerHTML=`<div class="cp"><div class="row"><div><div class="lbl">Weather · ${ws.label}</div><div class="sf" style="font-size:22px;margin:2px 0">${w?.temp!=null?Number(w.temp).toFixed(1)+'C':'--'}</div><div style="font-size:10.5px;color:#8a7260">${w?weatherSummary(w):(S.weatherLoading?'Loading Open-Meteo...':'Open-Meteo not loaded yet')}${S.weatherErr?' · '+S.weatherErr:''}</div></div><button class="btn bgsm" id="refreshWeatherDash">Refresh</button></div></div>`;
+  setTimeout(()=>{const b=document.getElementById('refreshWeatherDash');if(b)b.onclick=()=>updateWeather(true);},0);
+  sec.appendChild(wc);
   if (airconCost + tvCost + applianceCost > 0) {
     const acCard = D('card'); acCard.innerHTML = `<div class="cp"><div class="lbl">Electricity Cycle · ${cycleLabel(eCycle)}</div><div class="sf" style="font-size:23px;margin:2px 0">${fmt2(airconCost+tvCost+applianceCost)}</div><div style="font-size:10.5px;color:#8a7260">24/7 ${fmt2(cycleAlwaysOnCost)} · Sessions ${fmt2(applianceSessionCost)} · Aircon ${fmt2(airconCost)} · TV ${fmt2(tvCost)}</div></div>`;
     sec.appendChild(acCard);
   }
   // Budget slider
   const sc=D('card');const scp=D('cp');
-  const sr=D('row');sr.style.marginBottom='7px';sr.innerHTML=`<span class="lbl">Daily Food Budget</span><span class="sf amber-c" style="font-size:20px">${fmt(data.dailyBudget)}</span>`;
+  const sr=D('row');sr.style.marginBottom='7px';sr.appendChild(h('span',{cls:'lbl'},'Daily Meals Budget'));const dbVal=h('span',{cls:'sf amber-c',style:'font-size:20px'},fmt(data.dailyBudget));sr.appendChild(dbVal);
   const sl=h('input',{type:'range',min:150,max:700,step:10,value:data.dailyBudget});
-  sl.oninput=e=>setD(d=>({...d,dailyBudget:parseInt(e.target.value)}));
+  sl.oninput=e=>{dbVal.textContent=fmt(e.target.value);};
+  sl.onchange=e=>setD(d=>({...d,dailyBudget:parseInt(e.target.value)}));
   scp.appendChild(sr);scp.appendChild(sl);
   const slr=D('row');slr.style.marginTop='3px';slr.innerHTML=`<span style="font-size:10px;color:#8a7260">₱150 min</span><span style="font-size:10px;color:#8a7260">₱700</span>`;
   scp.appendChild(slr);sc.appendChild(scp);sec.appendChild(sc);
+  const gc=D('card');const gcp=D('cp');
+  const gr=D('row');gr.style.marginBottom='7px';gr.appendChild(h('span',{cls:'lbl'},'Monthly Grocery Budget'));const gbVal=h('span',{cls:'sf amber-c',style:'font-size:20px'},fmt(data.groceryBudget||5000));gr.appendChild(gbVal);
+  const gsl=h('input',{type:'range',min:1000,max:15000,step:500,value:data.groceryBudget||5000});
+  gsl.oninput=e=>{gbVal.textContent=fmt(e.target.value);};
+  gsl.onchange=e=>setD(d=>({...d,groceryBudget:parseInt(e.target.value)}));
+  gcp.appendChild(gr);gcp.appendChild(gsl);
+  const gsr=D('row');gsr.style.marginTop='3px';gsr.innerHTML=`<span style="font-size:10px;color:#8a7260">₱1,000 min</span><span style="font-size:10px;color:#8a7260">₱15,000</span>`;
+  gcp.appendChild(gsr);gc.appendChild(gcp);sec.appendChild(gc);
   // 7-day chart
   const cc=D('card');const ccp=D('cp');ccp.style.paddingBottom='5px';
-  const cr=D('row');cr.style.marginBottom='11px';cr.innerHTML=`<span class="lbl">7-Day Food Spending</span><span style="font-size:11px;color:#8a7260">Avg ${fmt(Math.round(avgD))}/day</span>`;
+  const cr=D('row');cr.style.marginBottom='11px';cr.innerHTML=`<span class="lbl">7-Day Meals Spending</span><span style="font-size:11px;color:#8a7260">Avg ${fmt(Math.round(avgD))}/day</span>`;
   const bars=D('bw');
   chart.forEach(cd=>{
     const isT=cd.ds===toStr(),pct=cd.spend/maxS,over=cd.spend>data.dailyBudget&&cd.spend>0;
@@ -818,28 +1094,29 @@ function renderFood(){
   mw.appendChild(msel);toprow.appendChild(mw);
   const fa=D('');fa.style.cssText='display:flex;gap:6px';
   if(S.multiFood){fa.appendChild(Btn('bgsm','Edit',()=>openBatchEdit('food'),!S.selFood.size));fa.appendChild(Btn('bgsm','Delete',()=>delSelected('food'),!S.selFood.size));fa.appendChild(Btn('bgsm','Done',()=>clearMulti('food')));}
-  else {fa.appendChild(Btn('bgsm','Select',()=>set({multiFood:true,selFood:new Set()})));fa.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addTx'})));}
+  else {fa.appendChild(Btn('bgsm','Select',()=>set({multiFood:true,selFood:new Set()})));fa.appendChild(Btn('bgsm','📦 Pantry',()=>set({tab:'stocks'})));fa.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addTx'})));}
   toprow.appendChild(fa);sec.appendChild(toprow);
   const mTx=data.transactions.filter(t=>mk(t.date)===S.viewMk);
-  const mTotal=mTx.reduce((s,t)=>s+t.amount,0);
-  const mDays=[...new Set(mTx.map(t=>t.date))].length;
-  const msc=D('card cg');msc.style.marginBottom='9px';msc.innerHTML=`<div class="cp"><div class="row"><div><div class="lblw">Food Spending — ${mklbl(S.viewMk)}</div><div class="sf" style="font-size:28px;color:#fff;margin:2px 0">${fmt(mTotal)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">${mTx.length} transactions · ${mDays} day${mDays!==1?'s':''}</div></div><div style="text-align:right"><div class="lblw">Avg/Day</div><div class="sf" style="font-size:20px;color:#fff;margin-top:3px">${fmt(mDays?Math.round(mTotal/mDays):0)}</div></div></div></div>`;
+  const mealTx=mTx.filter(t=>!isGroceryTx(t)),groceryTx=mTx.filter(isGroceryTx);
+  const mTotal=mTx.reduce((s,t)=>s+t.amount,0),mealTotal=mealTx.reduce((s,t)=>s+t.amount,0),groceryTotal=groceryTx.reduce((s,t)=>s+t.amount,0);
+  const mDays=[...new Set(mealTx.map(t=>t.date))].length;
+  const msc=D('card cg');msc.style.marginBottom='9px';msc.innerHTML=`<div class="cp"><div class="row" style="margin-bottom:9px"><div><div class="lblw">Food Spending — ${mklbl(S.viewMk)}</div><div class="sf" style="font-size:28px;color:#fff;margin:2px 0">${fmt(mTotal)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">${mTx.length} transactions · meals and groceries separated</div></div><div style="text-align:right"><div class="lblw">Meal Avg/Day</div><div class="sf" style="font-size:20px;color:#fff;margin-top:3px">${fmt(mDays?Math.round(mealTotal/mDays):0)}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div style="background:rgba(255,255,255,.1);border-radius:8px;padding:7px"><div class="lblw">Meals</div><div class="sf" style="font-size:16px;color:#fff">${fmt(mealTotal)}</div></div><div style="background:rgba(255,255,255,.1);border-radius:8px;padding:7px"><div class="lblw">Groceries</div><div class="sf" style="font-size:16px;color:${groceryTotal>(data.groceryBudget||5000)?'#ffd07a':'#fff'}">${fmt(groceryTotal)}</div><div style="font-size:9.5px;color:rgba(255,255,255,.55)">Budget ${fmt(data.groceryBudget||5000)}</div></div></div></div>`;
   sec.appendChild(msc);
   if(!mTx.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">🍽️</div><div>No food expenses logged for this month.</div>';sec.appendChild(e);return sec;}
   const grouped=mTx.reduce((acc,tx)=>{if(!acc[tx.date])acc[tx.date]=[];acc[tx.date].push(tx);return acc;},{});
   Object.keys(grouped).sort((a,b)=>b.localeCompare(a)).forEach(ds=>{
-    const txs=grouped[ds],total=txs.reduce((s,t)=>s+t.amount,0),over=total>data.dailyBudget;
+    const txs=grouped[ds],total=txs.reduce((s,t)=>s+t.amount,0),mealTotal=txs.filter(t=>!isGroceryTx(t)).reduce((s,t)=>s+t.amount,0),groceryTotal=txs.filter(isGroceryTx).reduce((s,t)=>s+t.amount,0),over=mealTotal>data.dailyBudget;
     const card=D('card');
     const hdr=D('row');hdr.style.cssText='padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
     hdr.appendChild(h('span',{style:'font-weight:700;font-size:12.5px'},new Date(ds+'T12:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric'})));
-    hdr.appendChild(h('span',{cls:'sf',style:`font-size:16px;color:${over?'#b83030':'#2e6e4f'}`},fmt(total)+(over?' ⚠️':'')));
+    hdr.appendChild(h('span',{cls:'sf',style:`font-size:16px;color:${over?'#b83030':'#2e6e4f'}`},`${fmt(mealTotal)} meals${groceryTotal?' · '+fmt(groceryTotal)+' grocery':''}${over?' ⚠️':''}`));
     card.appendChild(hdr);
     txs.forEach(tx=>{
       const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
       inner.style.justifyContent='flex-start';inner.style.gap='9px';
       if(S.multiFood)inner.appendChild(h('input',{type:'checkbox',checked:S.selFood.has(tx.id),style:'width:18px;height:18px;flex:0 0 18px',onClick:e=>{e.stopPropagation();toggleSel('food',tx.id);}}));
       const left=D('');left.style.cssText='flex:1;min-width:0';left.appendChild(h('div',{style:'font-size:12px;font-weight:600'},tx.source));
-      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${tx.note?tx.note+' · ':''}${new Date(tx.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}`));
+      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${tx.note?tx.note+' · ':''}${tx.discount?`Discount ${fmt(tx.discount)} · `:''}${new Date(tx.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}`));
       const right=D('');right.style.cssText='display:flex;align-items:center;gap:6px;flex-shrink:0';
       right.appendChild(h('span',{style:'font-weight:700;font-size:13px'},fmt(tx.amount)));
       const row=S.multiFood?inner:swRow(inner,()=>openEdit('food',tx.id),()=>delTx(tx.id));
@@ -848,7 +1125,7 @@ function renderFood(){
       card.appendChild(row);
     });
     const foot=D('');foot.style.cssText='padding:5px 13px;display:flex;justify-content:flex-end';
-    foot.appendChild(h('span',{style:`font-size:10.5px;color:${over?'#b83030':'#8a7260'}`},over?`₱${(total-data.dailyBudget).toFixed(0)} over budget`:`₱${(data.dailyBudget-total).toFixed(0)} remaining`));
+    foot.appendChild(h('span',{style:`font-size:10.5px;color:${over?'#b83030':'#8a7260'}`},over?`Meals ₱${(mealTotal-data.dailyBudget).toFixed(0)} over budget`:`Meals ₱${(data.dailyBudget-mealTotal).toFixed(0)} remaining`));
     card.appendChild(foot);sec.appendChild(card);
   });
   return sec;
@@ -870,9 +1147,9 @@ function renderHome(){
   mw.appendChild(msel);toprow.appendChild(mw);
   const ha=D('');ha.style.cssText='display:flex;gap:6px';
   if(S.multiHome){ha.appendChild(Btn('bgsm','Edit',()=>openBatchEdit('home'),!S.selHome.size));ha.appendChild(Btn('bgsm','Delete',()=>delSelected('home'),!S.selHome.size));ha.appendChild(Btn('bgsm','Done',()=>clearMulti('home')));}
-  else {ha.appendChild(Btn('bgsm','Select',()=>set({multiHome:true,selHome:new Set()})));ha.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addHome'})));}
+  else {ha.appendChild(Btn('bgsm','Select',()=>set({multiHome:true,selHome:new Set()})));ha.appendChild(Btn('bgsm','📦 Stocks',()=>set({tab:'stocks'})));ha.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addHome'})));}
   toprow.appendChild(ha);sec.appendChild(toprow);
-  const chips=D('chips');['All',...HCATS].forEach(cat=>{const c=D('chip'+(S.homeCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({homeCat:cat});chips.appendChild(c);});sec.appendChild(chips);
+  const chips=D('chips');['All',...homeCategories()].forEach(cat=>{const c=D('chip'+(S.homeCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({homeCat:cat});chips.appendChild(c);});sec.appendChild(chips);
   const mExp=expenses.filter(e=>mk(e.date)===S.viewMk);
   const mTotal=mExp.reduce((s,e)=>s+e.amount,0);
   const msc=D('card cg');msc.style.marginBottom='9px';msc.innerHTML=`<div class="cp"><div class="lblw">Home & Toiletries — ${mklbl(S.viewMk)}</div><div class="sf" style="font-size:28px;color:#fff;margin:2px 0">${fmt(mTotal)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">${mExp.length} item${mExp.length!==1?'s':''}</div></div>`;
@@ -892,7 +1169,7 @@ function renderHome(){
       if(S.multiHome)inner.appendChild(h('input',{type:'checkbox',checked:S.selHome.has(item.id),style:'width:18px;height:18px;flex:0 0 18px',onClick:e=>{e.stopPropagation();toggleSel('home',item.id);}}));
       const left=D('');left.style.cssText='flex:1;min-width:0';
       const nm=D('');nm.style.cssText='font-size:12px;font-weight:600';nm.textContent=item.name;
-      const ns=D('');ns.style.cssText='font-size:10.5px;color:#8a7260';ns.textContent=item.store+(item.note?' · '+item.note:'')+' · '+new Date(item.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'});
+      const ns=D('');ns.style.cssText='font-size:10.5px;color:#8a7260';ns.textContent=item.store+(item.note?' · '+item.note:'')+(item.discount?' · Discount '+fmt(item.discount):'')+' · '+new Date(item.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'});
       const qty=parseFloat(item.qty)||1,unitPrice=parseFloat(item.unitPrice)||item.amount;
       if(qty>1)ns.textContent+=` · ${qty} x ${fmt(unitPrice)}`;
       left.appendChild(nm);left.appendChild(ns);
@@ -910,12 +1187,17 @@ function renderHome(){
 function renderPrices(){
   const groups=pGroups();const sec=D('sec');
   const srow=D('row');srow.style.marginBottom='8px';
-  const si=Inp('',{type:'text',placeholder:'🔍 Search item...',value:S.pSearch});si.style.flex='1';si.oninput=e=>set({pSearch:e.target.value});
+  const applySearch=v=>{
+    S.pSearch=v;
+    const q=v.toLowerCase();
+    sec.querySelectorAll('[data-price-group]').forEach(el=>{el.style.display=el.dataset.priceGroup.includes(q)?'':'none';});
+  };
+  const si=Inp('',{type:'text',placeholder:'🔍 Search item...',value:S.pSearch});si.style.flex='1';si.oninput=e=>applySearch(e.target.value);
   srow.appendChild(si);srow.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addPrice'})));sec.appendChild(srow);
   const chips=D('chips');['All','Food','Home & Toiletries'].forEach(cat=>{const c=D('chip'+(S.pCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({pCat:cat});chips.appendChild(c);});sec.appendChild(chips);
   if(!groups.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">🏷️</div><div>No prices tracked yet.<br/>Add items or use AI Scan!</div>';sec.appendChild(e);return sec;}
   groups.forEach(group=>{
-    const card=D('card');const hdr=D('');hdr.style.cssText='padding:7px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
+    const card=D('card');card.dataset.priceGroup=group.display.toLowerCase();if(S.pSearch&&!card.dataset.priceGroup.includes(S.pSearch.toLowerCase()))card.style.display='none';const hdr=D('');hdr.style.cssText='padding:7px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
     const hn=D('');hn.style.cssText='font-weight:700;font-size:13px;text-transform:capitalize';hn.textContent=group.display;hdr.appendChild(hn);
     if(group.items.length>1){const gs=D('');gs.style.cssText='font-size:10.5px;color:#2e6e4f;font-weight:700;margin-top:1px';gs.textContent=`Save ${fmt(group.items[group.items.length-1].price-group.items[0].price)} by choosing cheapest`;hdr.appendChild(gs);}
     card.appendChild(hdr);
@@ -941,11 +1223,18 @@ function renderScan(){
   const sec=D('sec');const card=D('card');const cp=D('cp');
   cp.appendChild(h('span',{cls:'sf',style:'font-size:17px;display:block;margin-bottom:4px'},'📸 AI Scan'));
   cp.appendChild(h('p',{style:'font-size:12px;color:#8a7260;line-height:1.6;margin-bottom:12px'},'Upload a receipt, order screenshot, price tag, menu, or market sign. Save results to food expenses, home expenses, or price comparison.'));
-  cp.appendChild(Object.assign(D('qtip'),{innerHTML:'<strong>⚡ Gemini Limits:</strong> Usage is counted per Google Cloud project and per model. The app tries Flash-Lite first, then Flash fallbacks. If quota is reached, wait for the retry time or check AI Studio rate limits.'}));
-  const ok=D('row');ok.style.cssText='background:#e6f3ec;border-radius:8px;padding:6px 11px;margin-bottom:11px';
-  ok.appendChild(h('span',{style:'font-size:11px;color:#2e6e4f;font-weight:700'},'✅ Gemini Active'));
-  ok.appendChild(h('button',{style:'font-size:10.5px;color:#8a7260;background:none;border:none;cursor:pointer',onClick:()=>{sk('');set({geminiKey:'',setupInput:'',setupErr:'',scanData:null,scanImg:null});}},'Change 🔑'));
-  cp.appendChild(ok);
+  if(S.geminiKey){
+    cp.appendChild(Object.assign(D('qtip'),{innerHTML:'<strong>⚡ Gemini Limits:</strong> Usage is counted per Google Cloud project and per model. The app tries Flash-Lite first, then Flash fallbacks. If quota is reached, wait for the retry time or check AI Studio rate limits.'}));
+    const ok=D('row');ok.style.cssText='background:#e6f3ec;border-radius:8px;padding:6px 11px;margin-bottom:11px';
+    ok.appendChild(h('span',{style:'font-size:11px;color:#2e6e4f;font-weight:700'},'✅ Gemini Active'));
+    ok.appendChild(h('button',{style:'font-size:10.5px;color:#8a7260;background:none;border:none;cursor:pointer',onClick:openSettings},'Settings'));
+    cp.appendChild(ok);
+  }else{
+    const notice=D('qtip');
+    notice.innerHTML='<strong>AI Scan needs a Gemini API key.</strong> The rest of the app works without it. Add your key in Settings when you want receipt and price scanning.';
+    cp.appendChild(notice);
+    const sb=Btn('bgfull','Open Settings',openSettings);sb.style.marginBottom='11px';cp.appendChild(sb);
+  }
   const fi=h('input',{type:'file',accept:'image/*',style:'display:none'});
   fi.onchange=async e=>{
     const file=e.target.files[0];if(!file)return;
@@ -958,7 +1247,7 @@ function renderScan(){
   else{
     cp.appendChild(h('img',{src:`data:${S.scanMime};base64,${S.scanImg}`,cls:'si'}));
     const br=D('');br.style.cssText='display:flex;gap:7px';
-    const sb=Btn('ba','🔍 '+(S.scanning?'Analyzing...':'Scan Prices'),doScan,S.scanning);sb.style.cssText='flex:1;padding:11px';
+    const sb=Btn('ba','🔍 '+(S.scanning?'Analyzing...':'Scan Prices'),doScan,S.scanning||!S.geminiKey);sb.style.cssText='flex:1;padding:11px';
     br.appendChild(sb);br.appendChild(Btn('bgsm','✕',()=>set({scanImg:null,scanData:null,scanErr:'',addedIdx:new Set()})));
     cp.appendChild(br);
   }
@@ -1011,6 +1300,9 @@ function renderBills(){
     const kwh=isElectric?(parseFloat(bill.monthlyKwh?.[bm])||0):0;
     const billCycle=isElectric?billCycleForMonth(bm,meralcoReadDay(data)):null;
     const dailyKwh=kwh&&billCycle?kwh/cycleDays(billCycle):0;
+    const est=isElectric&&kwh&&billCycle?electricityCycleEstimate(billCycle,data):null;
+    const diff=est?est.totalKwh-kwh:0;
+    const logsPct=est&&kwh?est.totalKwh/kwh*100:0;
     const card=D('card');
     const hdr=D('row');hdr.style.cssText='padding:9px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce';
     hdr.appendChild(h('span',{style:'font-weight:700;font-size:13px'},bill.name));
@@ -1029,7 +1321,13 @@ function renderBills(){
       const kr=D('row cp');kr.style.borderBottom='1px solid #e2d9ce';
       const left=D('');
       left.appendChild(h('div',{style:'font-size:11.5px;color:#8a7260'},'Meralco kWh used:'));
-      if(kwh)left.appendChild(h('div',{style:'font-size:10px;color:#8a7260;margin-top:1px'},`${cycleLabel(billCycle)} · roughly ${dailyKwh.toFixed(2)} kWh/day`));
+      if(kwh){
+        const meta=D('');
+        meta.style.cssText='margin-top:5px;background:#faf6f1;border:1px solid #e2d9ce;border-radius:8px;padding:6px 8px';
+        meta.appendChild(h('div',{cls:'sf',style:'font-size:14px;color:#3a2818;line-height:1'},`${kwh.toFixed(2)} kWh`));
+        meta.appendChild(h('div',{style:'font-size:9.5px;color:#8a7260;margin-top:3px;line-height:1.35'},`${cycleLabel(billCycle)} · ${dailyKwh.toFixed(2)} kWh/day`));
+        left.appendChild(meta);
+      }
       kr.appendChild(left);
       const kKey=bill.id+'_'+bm+'_kwh';
       const ki=h('input',{type:'number',inputmode:'decimal',placeholder:'e.g. 157',style:'width:110px;padding:7px 9px;border-radius:7px;border:1.5px solid #e2d9ce;font-size:14px;font-weight:600;color:#3a2818;text-align:right;font-family:inherit'});
@@ -1037,6 +1335,15 @@ function renderBills(){
       ki.addEventListener('input',e=>{S.billDraft[kKey]=e.target.value;});
       ki.addEventListener('blur',e=>{delete S.billDraft[kKey];setBillKwh(bill.id,bm,e.target.value);});
       kr.appendChild(ki);card.appendChild(kr);
+      if(est){
+        const cmp=D('cp');cmp.style.cssText='padding-top:0;border-bottom:1px solid #e2d9ce';
+        cmp.appendChild(metricTiles([
+          {label:'Estimate',value:`${est.totalKwh.toFixed(2)} kWh`},
+          {label:'Diff',value:`${diff>=0?'+':''}${diff.toFixed(2)} kWh`,color:Math.abs(diff)>kwh*.2?'#b8720c':'#2e6e4f'},
+          {label:'Logs',value:`${logsPct.toFixed(1)}%`,color:logsPct>=80?'#2e6e4f':'#b8720c'}
+        ],true));
+        card.appendChild(cmp);
+      }
     }
     // Paid toggle
     const pr=D('row cp');pr.style.alignItems='center';
@@ -1056,7 +1363,8 @@ function renderReports(){
   const toprow=D('row');toprow.style.marginBottom='11px';
   const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
   mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
-  const allMonths=[...new Set([...(data.transactions||[]).map(t=>mk(t.date)),...(data.homeExpenses||[]).map(e=>mk(e.date)),...(data.airconUsage||[]).map(e=>mk(e.date)),...(data.tvUsage||[]).map(e=>mk(e.date)),...(data.applianceUsage||[]).map(e=>mk(e.date)),...Array.from({length:3},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-i);return mk(d2.toISOString().split('T')[0]);})])].sort((a,b)=>b.localeCompare(a));
+  const billMonths=(data.bills||[]).flatMap(b=>[...Object.keys(b.monthlyAmounts||{}),...Object.keys(b.monthlyKwh||{})]);
+  const allMonths=[...new Set([...(data.transactions||[]).map(t=>mk(t.date)),...(data.homeExpenses||[]).map(e=>mk(e.date)),...(data.airconUsage||[]).map(e=>mk(e.date)),...(data.tvUsage||[]).map(e=>mk(e.date)),...(data.applianceUsage||[]).map(e=>mk(e.date)),...billMonths,...Array.from({length:3},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-i);return mk(d2.toISOString().split('T')[0]);})])].sort((a,b)=>b.localeCompare(a));
   const msel=Sel(rm,allMonths,v=>set({rptMk:v}));
   msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
   [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
@@ -1120,6 +1428,34 @@ function renderReports(){
     });
     dc.appendChild(dcp);sec.appendChild(dc);
   }
+  const eBill=electricityBill(data),actualKwh=parseFloat(eBill?.monthlyKwh?.[rm])||0;
+  if(actualKwh){
+    const eCycle=billCycleForMonth(rm,meralcoReadDay(data)),est=electricityCycleEstimate(eCycle,data);
+    const diff=est.totalKwh-actualKwh,logsPct=actualKwh?est.totalKwh/actualKwh*100:0,amount=parseFloat(eBill?.monthlyAmounts?.[rm])||0,eff=amount?amount/actualKwh:0;
+    const ec=D('card');ec.appendChild(Object.assign(D(''),{style:'padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Electricity Bill Comparison</span>'}));
+    const ep=D('cp');
+    const actualBox=D('');
+    actualBox.style.cssText='background:#f7f3ee;border:1px solid #e2d9ce;border-radius:8px;padding:8px 10px;margin-bottom:8px';
+    actualBox.appendChild(h('div',{cls:'lbl',style:'margin-bottom:2px'},'Meralco Actual'));
+    actualBox.appendChild(h('div',{cls:'sf',style:'font-size:22px;color:#3a2818;line-height:1.05'},`${actualKwh.toFixed(2)} kWh`));
+    actualBox.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260;margin-top:4px'},`${cycleLabel(eCycle)} · ${(actualKwh/cycleDays(eCycle)).toFixed(2)} kWh/day`));
+    ep.appendChild(actualBox);
+    const tiles=[
+      {label:'Estimate',value:`${est.totalKwh.toFixed(2)} kWh`},
+      {label:'Diff',value:`${diff>=0?'+':''}${diff.toFixed(2)} kWh`,color:Math.abs(diff)>actualKwh*.2?'#b8720c':'#2e6e4f'},
+      {label:'Logs',value:`${logsPct.toFixed(1)}%`,color:logsPct>=80?'#2e6e4f':'#b8720c'}
+    ];
+    if(eff)tiles.push({label:'Rate',value:`${fmt2(eff)}/kWh`});
+    ep.appendChild(metricTiles(tiles));
+    ep.appendChild(h('div',{cls:'lbl',style:'margin-top:10px'},'Estimate Breakdown'));
+    ep.appendChild(metricTiles([
+      {label:'Aircon',value:`${est.airconKwh.toFixed(2)} kWh`,color:'#b8720c'},
+      {label:'TV',value:`${est.tvKwh.toFixed(2)} kWh`,color:'#2e6e4f'},
+      {label:'24/7',value:`${est.alwaysKwh.toFixed(2)} kWh`,color:'#1a56c4'},
+      {label:'Sessions',value:`${est.sessionKwh.toFixed(2)} kWh`,color:'#6b4c36'}
+    ]));
+    ec.appendChild(ep);sec.appendChild(ec);
+  }
   // Top expenses
   const allEx=[...foodTx.map(t=>({name:t.source+(t.note?' — '+t.note:''),amount:t.amount,date:t.date,type:'food'})),...homeEx.map(e=>({name:e.name,amount:e.amount,date:e.date,type:'home'})),...airconUsage.map(u=>({name:'Aircon ('+u.hours+' hrs)',amount:u.cost,date:u.date,type:'aircon'})),...tvUsage.map(u=>({name:'TV ('+u.hours+' hrs)',amount:u.cost,date:u.date,type:'aircon'})),...applianceUsage.map(u=>({name:u.name+' ('+u.minutes+' mins)',amount:u.cost,date:u.date,type:'aircon'})),...appliances.filter(a=>a.alwaysOn).map(a=>({name:a.name+' (24/7)',amount:applianceMonthly(a,data.meralcoRate).cost,date:`${rm}-01`,type:'aircon'}))].sort((a,b)=>b.amount-a.amount).slice(0,10);
   if(allEx.length){
@@ -1147,7 +1483,7 @@ function renderReports(){
 function renderStocks(){
   const data=S.data,stocks=data.stocks||[];const sec=D('sec');
   const toprow=D('row');toprow.style.marginBottom='10px';
-  toprow.appendChild(h('span',{style:'font-size:14px;font-weight:700;color:#3a2818'},'Stocks & Inventory'));
+  toprow.appendChild(h('span',{style:'font-size:14px;font-weight:700;color:#3a2818'},'Pantry & Stocks'));
   toprow.appendChild(Btn('bp bsm','+ Item',()=>set({modal:'addStock'})));sec.appendChild(toprow);
   // Status chips
   const chips=D('chips');
@@ -1168,7 +1504,7 @@ function renderStocks(){
   if(S.stockCat!=='All')filtered=filtered.filter(s=>s.category===S.stockCat);
   if(S.stockStatus==='Low Stock')filtered=filtered.filter(s=>s.quantity>0&&s.quantity<=s.minQty);
   if(S.stockStatus==='Out of Stock')filtered=filtered.filter(s=>s.quantity<=0);
-  if(!filtered.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">📦</div><div>No items tracked yet.<br/>Add items you buy regularly<br/>to keep track of your stocks.</div>';sec.appendChild(e);return sec;}
+  if(!filtered.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">📦</div><div>No pantry items tracked yet.<br/>Add groceries and household supplies<br/>to keep track of your stocks.</div>';sec.appendChild(e);return sec;}
   // Group by category
   const byCat=filtered.reduce((acc,s)=>{if(!acc[s.category])acc[s.category]=[];acc[s.category].push(s);return acc;},{});
   Object.entries(byCat).sort().forEach(([cat,items])=>{
@@ -1252,12 +1588,22 @@ function renderAircon(){
   toprow.appendChild(titleWrap);
   const topActs=D('');topActs.style.cssText='display:flex;gap:6px';
   topActs.appendChild(Btn('bgsm','Appliances',()=>set({tab:'appliances'})));
-  topActs.appendChild(Btn('bgsm','⚙️ Config',()=>set({modal:'airSet',airSetF:{rate:data.meralcoRate,readDay:readDay,startup:rates.startup,sleepDay:rates.sleepDay,sleepNight:rates.sleepNight,day:rates.day,night:rates.night,defaultSleep:data.airconDefaultSleepMode!==false,defaultTemp:data.airconDefaultTemp||'29',tvWatts:data.tvWatts||175}})));
+  topActs.appendChild(Btn('bgsm','⚙️ Config',()=>set({modal:'airSet',airSetF:{rate:data.meralcoRate,readDay:readDay,startup:rates.startup,sleepDay:rates.sleepDay,sleepNight:rates.sleepNight,ecoDay:rates.ecoDay,ecoNight:rates.ecoNight,day:rates.day,night:rates.night,defaultMode:airconModeFrom(data.airconDefaultMode,data.airconDefaultSleepMode),defaultSleep:data.airconDefaultSleepMode!==false,defaultTemp:data.airconDefaultTemp||'29',tempBaseline:data.airconTempBaseline||29,tempStep:data.airconTempStepPct||7,outdoorBaseline:data.airconOutdoorBaseline||30,outdoorStep:data.airconOutdoorStepPct||2.5,tvWatts:data.tvWatts||175}})));
   toprow.appendChild(topActs);
   sec.appendChild(toprow);
 
   const hero=D('card cg');hero.innerHTML=`<div class="cp"><div class="lblw">${cycleLabel(selectedCycle)} Est. Electricity</div><div class="sf" style="font-size:32px;color:#fff;margin:2px 0">${fmt2(mCost+tvCost+applianceCost)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">Total ${displayCycleKwh.toFixed(2)} kWh${meralcoCycleKwh?' Meralco':' estimated'} · Read day ${readDay} · 24/7 ${fmt2(alwaysOnCost)} · Sessions ${fmt2(applianceSessionCost)} · Aircon ${mHours.toFixed(1)}h · TV ${tvHours.toFixed(1)}h</div></div>`;
   sec.appendChild(hero);
+
+  const weatherCard=D('card');
+  const weatherBody=D('cp');
+  const wr=D('row');wr.style.cssText='gap:9px';
+  const wl=D('');wl.style.cssText='flex:1;min-width:0';
+  wl.appendChild(h('div',{cls:'lbl'},`Outdoor Weather · ${weatherSettings(data).label}`));
+  wl.appendChild(h('div',{cls:'sf',style:'font-size:22px;margin:2px 0'},data.weather?.temp!=null?`${Number(data.weather.temp).toFixed(1)}C`:'--'));
+  wl.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},data.weather?weatherSummary(data.weather):(S.weatherLoading?'Loading Open-Meteo...':'Open-Meteo not loaded yet')));
+  const wb=Btn('bgsm','Refresh',()=>updateWeather(true));wb.style.flexShrink='0';
+  wr.appendChild(wl);wr.appendChild(wb);weatherBody.appendChild(wr);weatherCard.appendChild(weatherBody);sec.appendChild(weatherCard);
 
   const stats=D('g2');stats.style.marginBottom='9px';
   const s1=D('card');s1.innerHTML=`<div class="cp"><div class="lbl">Always On</div><div class="sf" style="font-size:21px;margin:2px 0">${fmt2(alwaysOnCost)}</div><div style="font-size:10.5px;color:#8a7260">${alwaysOnKwh.toFixed(3)} kWh/cycle</div></div>`;
@@ -1267,8 +1613,9 @@ function renderAircon(){
   const kwhCard=D('card');kwhCard.innerHTML=`<div class="cp"><div class="lbl">Total kWh This Cycle</div><div class="sf" style="font-size:24px;margin:2px 0">${displayCycleKwh.toFixed(2)} kWh</div><div style="font-size:10.5px;color:#8a7260">${meralcoCycleKwh?'From Meralco bill input':'Estimated from logs'} · Aircon ${airconKwh.toFixed(2)} · TV ${tvKwh.toFixed(2)} · Appliances ${applianceKwh.toFixed(2)}</div></div>`;
   sec.appendChild(kwhCard);
 
+  let alwaysCard=null;
   if(alwaysOn.length){
-    const alwaysCard=D('card');alwaysCard.appendChild(DivHdr('24/7 Appliances'));
+    alwaysCard=D('card');alwaysCard.appendChild(DivHdr('24/7 Appliances'));
     alwaysOn.sort((a,b)=>applianceMonthly(b,data.meralcoRate).cost-applianceMonthly(a,data.meralcoRate).cost).forEach(a=>{
       const monthly=applianceMonthly(a,data.meralcoRate);
       const cycleCost=monthly.cost/30*cycleDays(selectedCycle),cycleKwh=monthly.kwh/30*cycleDays(selectedCycle);
@@ -1282,7 +1629,6 @@ function renderAircon(){
       inner.appendChild(left);inner.appendChild(right);
       alwaysCard.appendChild(swRow(inner,()=>openEdit('appliance',a.id),()=>delAppliance(a.id)));
     });
-    sec.appendChild(alwaysCard);
   }
 
   const cc=D('card');const ccp=D('cp');ccp.style.paddingBottom='5px';
@@ -1321,7 +1667,7 @@ function renderAircon(){
       const inner=D('row cr');inner.style.cssText='border-bottom:1px solid #e2d9ce;gap:9px';
       const left=D('');left.style.cssText='flex:1;min-width:0';
       left.appendChild(h('div',{style:'font-size:12.5px;font-weight:700'},s.name));
-      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${s.type==='aircon'?'Aircon':s.type==='tv'?'TV':'Appliance'} · on since ${fmtTime12(timeOf(new Date(s.startedAt)))} · ${est.minutes} mins`));
+      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${s.type==='aircon'?'Aircon · '+airconModeLabel(s.mode,s.sleepMode):s.type==='tv'?'TV':'Appliance'} · on since ${fmtTime12(timeOf(new Date(s.startedAt)))} · ${est.minutes} mins${s.outdoorTemp!==''&&s.outdoorTemp!=null?' · out '+s.outdoorTemp+'C':''}`));
       const right=D('');right.style.cssText='text-align:right;flex-shrink:0';
       right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},`${est.kwh.toFixed(3)} kWh`));
       right.appendChild(h('div',{style:'font-size:10px;color:#8a7260'},fmt2(est.cost)));
@@ -1333,13 +1679,14 @@ function renderAircon(){
   }else{
     const empty=D('empty');empty.style.cssText='padding:16px;color:#8a7260;font-size:12px;text-align:center';empty.textContent='Nothing is currently running.';liveCard.appendChild(empty);
   }
-  sec.appendChild(liveCard);
 
-  const spec=D('card');spec.innerHTML=`<div class="cp"><div class="lbl">Two-Phase Inverter Estimate</div><div style="font-size:12px;color:#3a2818;line-height:1.6;margin-top:5px">First 60 mins use <b>${rates.startup} kWh/hr</b>. After that: Sleep Mode uses <b>${rates.sleepDay} day</b> / <b>${rates.sleepNight} night</b> kWh/hr; normal mode uses <b>${rates.day} day</b> / <b>${rates.night} night</b> kWh/hr. Day is 6 AM-6 PM. Defaults are ${data.airconDefaultSleepMode!==false?'Sleep Mode':'Normal Mode'}${data.airconDefaultTemp?' at '+data.airconDefaultTemp+'C':''}.</div></div>`;
+  const defaultMode=airconModeFrom(data.airconDefaultMode,data.airconDefaultSleepMode);
+  const ap=airconProfile(data);
+  const spec=D('card');spec.innerHTML=`<div class="cp"><div class="lbl">${ap.model} Estimate</div><div style="font-size:12px;color:#3a2818;line-height:1.6;margin-top:5px">Rated around <b>${ap.ratedWatts}W</b> with ${ap.minWatts}-${ap.maxWatts}W inverter range, CSPF <b>${ap.cspf}</b>, DOE <b>${ap.doeMonthlyKwh} kWh/month</b>. Startup now tapers for the first 60 mins from <b>${rates.startup} kWh/hr</b> into the selected mode. Sleep <b>${rates.sleepDay}/${rates.sleepNight}</b>, Eco <b>${rates.ecoDay}/${rates.ecoNight}</b>, Normal <b>${rates.day}/${rates.night}</b> day/night kWh/hr. Set temp adjusts by <b>${data.airconTempStepPct||7}%/C</b>; outdoor by <b>${data.airconOutdoorStepPct||2.5}%/C</b>.</div></div>`;
   sec.appendChild(spec);
 
   const actions=D('');actions.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px';
-  actions.appendChild(Btn('bgfull','+ Aircon Session',()=>set({modal:'addAircon',airconF:{...S.airconF,date:toStr(),sleepMode:data.airconDefaultSleepMode!==false,tempC:data.airconDefaultTemp||S.airconF.tempC||'29'}})));
+  actions.appendChild(Btn('bgfull','+ Aircon Session',()=>{const mode=airconModeFrom(data.airconDefaultMode,data.airconDefaultSleepMode),w=data.weather||{};set({modal:'addAircon',airconF:{...S.airconF,date:toStr(),mode,sleepMode:mode==='sleep',tempC:data.airconDefaultTemp||S.airconF.tempC||'29',roomTemp:S.airconF.roomTemp||'',outdoorTemp:w.temp??S.airconF.outdoorTemp??'',outdoorFeels:w.apparent??S.airconF.outdoorFeels??'',outdoorHumidity:w.humidity??S.airconF.outdoorHumidity??''}});}));
   actions.appendChild(Btn('bgfull','Start Aircon',()=>startActiveSession('aircon')));
   actions.appendChild(Btn('bgfull','+ TV Hours',()=>set({modal:'addTv'})));
   actions.appendChild(Btn('bgfull','Start TV',()=>startActiveSession('tv')));
@@ -1349,6 +1696,8 @@ function renderAircon(){
   }));
   actions.appendChild(Btn('bgfull','Manage Appliances',()=>set({tab:'appliances'})));
   sec.appendChild(actions);
+  sec.appendChild(liveCard);
+  if(alwaysCard)sec.appendChild(alwaysCard);
 
   if(!mUsage.length&&!mTv.length&&!mApplianceUsage.length&&!alwaysOnCost){const e=D('card empty');e.innerHTML='<div>No electricity usage logged for this month.</div>';sec.appendChild(e);return sec;}
 
@@ -1357,8 +1706,8 @@ function renderAircon(){
   mUsage.forEach(u=>{
     const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
     const left=D('');
-    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`Aircon · ${u.hours} hours${u.sleepMode!==false?' · Sleep':''}${u.tempC!==''&&u.tempC!=null?' · '+u.tempC+'C':''}`));
-    left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}${u.start&&u.end?' · '+fmtTime12(u.start)+'-'+fmtTime12(u.end):''} · ${u.kwh.toFixed(2)} kWh`));
+    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`Aircon · ${u.hours} hours · ${airconModeLabel(u.mode,u.sleepMode)}${u.tempC!==''&&u.tempC!=null?' · set '+u.tempC+'C':''}${u.roomTemp!==''&&u.roomTemp!=null?' · room '+u.roomTemp+'C':''}`));
+    left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}${u.start&&u.end?' · '+fmtTime12(u.start)+'-'+fmtTime12(u.end):''} · ${u.kwh.toFixed(2)} kWh${u.outdoorTemp!==''&&u.outdoorTemp!=null?' · out '+u.outdoorTemp+'C':''}`));
     const right=D('');right.style.cssText='text-align:right';
     right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},fmt2(u.cost)));
     right.appendChild(h('div',{style:'font-size:9px;color:#8a7260'},`@${u.rateAtTime}/kWh`));
@@ -1423,6 +1772,17 @@ function renderAppliances(){
   quick.appendChild(Btn('bgfull','Electricity Overview',()=>set({tab:'aircon'})));
   sec.appendChild(quick);
 
+  const ap=airconProfile(data),rates=airconRates(data);
+  const profileCard=D('card');profileCard.appendChild(DivHdr('Aircon Profile'));
+  const profileBody=D('cp');
+  const pr=D('row');pr.style.cssText='align-items:flex-start;gap:9px';
+  const pl=D('');pl.style.cssText='flex:1;min-width:0';
+  pl.appendChild(h('div',{style:'font-size:13px;font-weight:700'},ap.model));
+  pl.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260;line-height:1.55;margin-top:2px'},`Outdoor ${ap.outdoorModel} · ${ap.coolingKw} kW cooling · ${ap.ratedWatts}W rated · ${ap.minWatts}-${ap.maxWatts}W inverter range · CSPF ${ap.cspf} · DOE ${ap.doeMonthlyKwh} kWh/month`));
+  pl.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260;line-height:1.55;margin-top:4px'},`Estimate rates: Startup ${rates.startup} · Sleep ${rates.sleepDay}/${rates.sleepNight} · Eco ${rates.ecoDay}/${rates.ecoNight} · Normal ${rates.day}/${rates.night}. Set temp ${data.airconTempStepPct||7}%/C from ${data.airconTempBaseline||29}C.`));
+  const edit=Btn('bgsm','Edit',openAirconProfile);edit.style.flexShrink='0';
+  pr.appendChild(pl);pr.appendChild(edit);profileBody.appendChild(pr);profileCard.appendChild(profileBody);sec.appendChild(profileCard);
+
   const alwaysCard=D('card');alwaysCard.appendChild(DivHdr('24/7 Appliances'));
   if(always.length){
     always.sort((a,b)=>applianceMonthly(b,data.meralcoRate).cost-applianceMonthly(a,data.meralcoRate).cost).forEach(a=>{
@@ -1473,21 +1833,31 @@ function renderModal(){
   if(S.modal==='addTx'){
     const c=D('');
     const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 150',value:S.txF.amount});ai.oninput=e=>S.txF.amount=e.target.value;setTimeout(()=>ai.focus(),50);
-    c.appendChild(Fg('Amount (₱)',ai));c.appendChild(Fg('Source',Sel(S.txF.source,FSRC,v=>S.txF.source=v)));
-    const ni=Inp('',{type:'text',placeholder:'e.g. Pork sinigang',value:S.txF.note});ni.oninput=e=>S.txF.note=e.target.value;c.appendChild(Fg('Notes (optional)',ni));
+    c.appendChild(Fg('Subtotal (₱)',ai));
+    const dii=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:S.txF.discount});dii.oninput=e=>S.txF.discount=e.target.value;c.appendChild(Fg('Discount (₱)',dii));
+    c.appendChild(Fg('Source',Sel(S.txF.source,foodSources(),v=>{S.txF.source=v;render();})));
+    const isGroceries=S.txF.source==='Groceries';
+    const ni=Inp('',{type:'text',placeholder:isGroceries?'e.g. Eggs, bread, chips':'e.g. Pork sinigang',value:S.txF.note});ni.oninput=e=>S.txF.note=e.target.value;c.appendChild(Fg(isGroceries?'Pantry Item Name':'Notes (optional)',ni));
+    if(isGroceries){
+      const g2=D('g2');
+      const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',value:S.txF.qty||'1'});qi.oninput=e=>S.txF.qty=e.target.value;qfg.appendChild(qi);g2.appendChild(qfg);
+      const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(S.txF.unit||'pcs',UNITS,v=>S.txF.unit=v));g2.appendChild(ufg);c.appendChild(g2);
+      c.appendChild(Fg('Pantry Category',Sel(S.txF.stockCategory||'Food Staples',SCATS,v=>S.txF.stockCategory=v),'This grocery will also be added to Pantry & Stocks.'));
+    }
     const di=Inp('',{type:'date',value:S.txF.date});di.oninput=e=>S.txF.date=e.target.value;c.appendChild(Fg('Date',di));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save',addTx);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Food Expense',c);
   }
   if(S.modal==='addHome'){
     const c=D('');
     const ni=Inp('',{type:'text',placeholder:'e.g. Dish soap, Shampoo',value:S.homeF.name});ni.oninput=e=>S.homeF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
-    const calc=()=>{const total=(parseFloat(S.homeF.unitPrice)||0)*(parseFloat(S.homeF.qty)||1);S.homeF.amount=total?total.toFixed(2):'';ti.value=S.homeF.amount;};
+    const calc=()=>{const gross=(parseFloat(S.homeF.unitPrice)||0)*(parseFloat(S.homeF.qty)||1),discount=Math.max(0,parseFloat(S.homeF.discount)||0),total=Math.max(0,gross-discount);S.homeF.amount=total?total.toFixed(2):'';ti.value=S.homeF.amount;};
     const g2=D('g2');
     const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',value:S.homeF.qty});qi.oninput=e=>{S.homeF.qty=e.target.value;calc();};qfg.appendChild(qi);g2.appendChild(qfg);
     const upfg=D('fg');upfg.appendChild(h('label',{cls:'fl'},'Unit Price (₱)'));const ui=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.homeF.unitPrice});ui.oninput=e=>{S.homeF.unitPrice=e.target.value;calc();};upfg.appendChild(ui);g2.appendChild(upfg);c.appendChild(g2);
     c.appendChild(Fg('Unit',Sel(S.homeF.unit,UNITS,v=>S.homeF.unit=v)));
+    const df=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:S.homeF.discount});df.oninput=e=>{S.homeF.discount=e.target.value;calc();};c.appendChild(Fg('Discount (₱)',df));
     const ti=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.homeF.amount,readonly:true});c.appendChild(Fg('Total (₱)',ti));
-    c.appendChild(Fg('Category',Sel(S.homeF.category,HCATS,v=>S.homeF.category=v)));c.appendChild(Fg('Store',Sel(S.homeF.store,STORES,v=>S.homeF.store=v)));
+    c.appendChild(Fg('Category',Sel(S.homeF.category,homeCategories(),v=>S.homeF.category=v)));c.appendChild(Fg('Store',Sel(S.homeF.store,homeStores(),v=>S.homeF.store=v)));
     const ot=Inp('',{type:'text',placeholder:'Optional',value:S.homeF.note});ot.oninput=e=>S.homeF.note=e.target.value;c.appendChild(Fg('Notes',ot));
     const di=Inp('',{type:'date',value:S.homeF.date});di.oninput=e=>S.homeF.date=e.target.value;c.appendChild(Fg('Date',di));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save',addHome);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Home / Toiletries',c);
@@ -1498,21 +1868,21 @@ function renderModal(){
     const g2=D('g2');
     const pfg=D('fg');pfg.appendChild(h('label',{cls:'fl'},'Price (₱)'));const pi=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.priceF.price});pi.oninput=e=>S.priceF.price=e.target.value;pfg.appendChild(pi);g2.appendChild(pfg);
     const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(S.priceF.unit,UNITS,v=>S.priceF.unit=v));g2.appendChild(ufg);c.appendChild(g2);
-    const catSel=Sel(S.priceF.category,['Food','Home & Toiletries'],v=>{S.priceF.category=v;S.priceF.subcat=v==='Food'?FCATS[0]:HCATS[0];render();});c.appendChild(Fg('Category',catSel));
-    c.appendChild(Fg('Subcategory',Sel(S.priceF.subcat,S.priceF.category==='Food'?FCATS:HCATS,v=>S.priceF.subcat=v)));
-    c.appendChild(Fg('Store',Sel(S.priceF.store,STORES,v=>S.priceF.store=v)));
+    const catSel=Sel(S.priceF.category,['Food','Home & Toiletries'],v=>{S.priceF.category=v;S.priceF.subcat=v==='Food'?FCATS[0]:homeCategories()[0];render();});c.appendChild(Fg('Category',catSel));
+    c.appendChild(Fg('Subcategory',Sel(S.priceF.subcat,S.priceF.category==='Food'?FCATS:homeCategories(),v=>S.priceF.subcat=v)));
+    c.appendChild(Fg('Store',Sel(S.priceF.store,homeStores(),v=>S.priceF.store=v)));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save Price',addPrice);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Price',c);
   }
   if(S.modal==='addStock'){
     const c=D('');
-    const ni=Inp('',{type:'text',placeholder:'e.g. Rice, Shampoo, Dishwashing',value:S.stockF.name});ni.oninput=e=>S.stockF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
+    const ni=Inp('',{type:'text',placeholder:'e.g. Rice, eggs, shampoo, dishwashing',value:S.stockF.name});ni.oninput=e=>S.stockF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
     c.appendChild(Fg('Category',Sel(S.stockF.category,SCATS,v=>S.stockF.category=v)));
     const g2=D('g2');
     const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Current Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',placeholder:'0',value:S.stockF.quantity});qi.oninput=e=>S.stockF.quantity=e.target.value;qfg.appendChild(qi);g2.appendChild(qfg);
     const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(S.stockF.unit,UNITS,v=>S.stockF.unit=v));g2.appendChild(ufg);c.appendChild(g2);
     const mfg=D('fg');mfg.appendChild(h('label',{cls:'fl'},'Min Qty (alert below this)'));const mi=Inp('',{type:'number',inputmode:'decimal',placeholder:'1',value:S.stockF.minQty});mi.oninput=e=>S.stockF.minQty=e.target.value;mfg.appendChild(mi);c.appendChild(mfg);
     const nt=Inp('',{type:'text',placeholder:'e.g. Buy at Palengke',value:S.stockF.note});nt.oninput=e=>S.stockF.note=e.target.value;c.appendChild(Fg('Notes (optional)',nt));
-    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Add Item',addStock);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Stock Item',c);
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Add Item',addStock);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Pantry Item',c);
   }
   if(S.modal==='addBill'){
     const c=D('');
@@ -1532,11 +1902,14 @@ function renderModal(){
     const g2=D('g2');
     const sfg=D('fg');sfg.appendChild(h('label',{cls:'fl'},'Start Time'));sfg.appendChild(Time12Control(S.airconF.start,v=>S.airconF.start=v));g2.appendChild(sfg);
     const efg=D('fg');efg.appendChild(h('label',{cls:'fl'},'End Time'));efg.appendChild(Time12Control(S.airconF.end,v=>S.airconF.end=v));g2.appendChild(efg);c.appendChild(g2);
-    const sr=D('row');sr.style.cssText='justify-content:flex-start;gap:8px;margin:3px 0 12px';
-    const cb=h('input',{type:'checkbox',checked:S.airconF.sleepMode!==false,style:'width:18px;height:18px'});cb.onchange=e=>S.airconF.sleepMode=e.target.checked;
-    sr.appendChild(cb);sr.appendChild(h('span',{style:'font-size:12.5px;font-weight:700;color:#3a2818'},'Sleep Mode'));c.appendChild(sr);
-    const ti=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional, e.g. 29',value:S.airconF.tempC||''});ti.oninput=e=>S.airconF.tempC=e.target.value;c.appendChild(Fg('Room Temp (C)',ti,'Optional. Your usual sleep-mode range is 28-30C.'));
-    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},'Uses your editable config rates. After the first 60 mins, the estimate switches by Sleep Mode and day/night time.'));
+    c.appendChild(Fg('Mode',Sel(airconModeLabel(S.airconF.mode,S.airconF.sleepMode),AIRCON_MODES,v=>{S.airconF.mode=v.toLowerCase();S.airconF.sleepMode=S.airconF.mode==='sleep';}),'Uses the matching day/night kWh/hr rates from Electricity Config.'));
+    const ti=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 29',value:S.airconF.tempC||''});ti.oninput=e=>S.airconF.tempC=e.target.value;c.appendChild(Fg('Aircon Set Temp (C)',ti,`Adjusts running kWh after the first hour from a ${S.data.airconTempBaseline||29}C baseline.`));
+    const rti=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional, from digital clock',value:S.airconF.roomTemp||''});rti.oninput=e=>S.airconF.roomTemp=e.target.value;c.appendChild(Fg('Current Room Temp (C)',rti,'Saved as context only for now.'));
+    const wg=D('g2');
+    const otFg=D('fg');otFg.appendChild(h('label',{cls:'fl'},'Outdoor Temp (C)'));const oti=Inp('',{type:'number',inputmode:'decimal',value:S.airconF.outdoorTemp||''});oti.oninput=e=>S.airconF.outdoorTemp=e.target.value;otFg.appendChild(oti);wg.appendChild(otFg);
+    const ohFg=D('fg');ohFg.appendChild(h('label',{cls:'fl'},'Humidity %'));const ohi=Inp('',{type:'number',inputmode:'decimal',value:S.airconF.outdoorHumidity||''});ohi.oninput=e=>S.airconF.outdoorHumidity=e.target.value;ohFg.appendChild(ohi);wg.appendChild(ohFg);c.appendChild(wg);
+    const ofi=Inp('',{type:'number',inputmode:'decimal',value:S.airconF.outdoorFeels||''});ofi.oninput=e=>S.airconF.outdoorFeels=e.target.value;c.appendChild(Fg('Feels Like (C)',ofi,'Outdoor temp affects running kWh lightly. Values auto-fill from Open-Meteo when available.'));
+    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},'Uses your editable config rates. After the first 60 mins, the estimate switches by mode and day/night time.'));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Log Usage',addAircon);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Aircon Usage',c);
   }
   if(S.modal==='addTv'){
@@ -1573,7 +1946,7 @@ function renderModal(){
   if(S.modal==='addAppliance'){
     const c=D('');
     const ni=Inp('',{type:'text',placeholder:'e.g. Rice cooker, LED bulb',value:S.applianceF.name});ni.oninput=e=>S.applianceF.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Appliance Name',ni));
-    c.appendChild(Fg('Category',Sel(S.applianceF.category,APPLIANCE_CATS,v=>S.applianceF.category=v)));
+    c.appendChild(Fg('Category',Sel(S.applianceF.category,applianceCategories(),v=>S.applianceF.category=v)));
     const g1=D('g2');
     const wfg=D('fg');wfg.appendChild(h('label',{cls:'fl'},'Watts'));const wi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',placeholder:'e.g. 60',value:S.applianceF.watts});wi.oninput=e=>S.applianceF.watts=e.target.value;wfg.appendChild(wi);g1.appendChild(wfg);
     const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',placeholder:'1',value:S.applianceF.qty});qi.oninput=e=>S.applianceF.qty=e.target.value;qfg.appendChild(qi);g1.appendChild(qfg);c.appendChild(g1);
@@ -1587,38 +1960,95 @@ function renderModal(){
     c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},S.applianceF.alwaysOn?`24/7 appliances auto-compute monthly using ${fmt(S.data.meralcoRate)}/kWh.`:'Session appliances only count when you log a usage session.'));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Add Appliance',addAppliance);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Add Appliance',c);
   }
+  if(S.modal==='settings'){
+    const c=D(''),f=S.settingsF;
+    const gk=Inp('',{type:'password',placeholder:'AIza...',value:f.geminiKey||''});gk.oninput=e=>f.geminiKey=e.target.value;c.appendChild(Fg('Gemini API Key',gk,'Stored only in this browser.'));
+    c.appendChild(Fg('Weather Provider',Sel(f.weatherProvider||'open-meteo',['open-meteo'],v=>f.weatherProvider=v),'Open-Meteo does not need an API key.'));
+    const wl=Inp('',{type:'text',value:f.weatherLabel||''});wl.oninput=e=>f.weatherLabel=e.target.value;c.appendChild(Fg('Location Label',wl));
+    const g1=D('g2');
+    const latFg=D('fg');latFg.appendChild(h('label',{cls:'fl'},'Latitude'));const lati=Inp('',{type:'number',inputmode:'decimal',step:'0.00001',value:f.weatherLat});lati.oninput=e=>f.weatherLat=e.target.value;latFg.appendChild(lati);g1.appendChild(latFg);
+    const lonFg=D('fg');lonFg.appendChild(h('label',{cls:'fl'},'Longitude'));const loni=Inp('',{type:'number',inputmode:'decimal',step:'0.00001',value:f.weatherLon});loni.oninput=e=>f.weatherLon=e.target.value;lonFg.appendChild(loni);g1.appendChild(lonFg);c.appendChild(g1);
+    const g2=D('g2');
+    const elFg=D('fg');elFg.appendChild(h('label',{cls:'fl'},'Elevation (m)'));const eli=Inp('',{type:'number',inputmode:'decimal',step:'0.1',value:f.weatherElevation});eli.oninput=e=>f.weatherElevation=e.target.value;elFg.appendChild(eli);g2.appendChild(elFg);
+    const wkFg=D('fg');wkFg.appendChild(h('label',{cls:'fl'},'Weather API Key'));const wki=Inp('',{type:'password',placeholder:'Optional',value:f.weatherApiKey||''});wki.oninput=e=>f.weatherApiKey=e.target.value;wkFg.appendChild(wki);g2.appendChild(wkFg);c.appendChild(g2);
+    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},'Default coordinates are 14.46139, 120.97306 for Las Pinas. Outdoor weather is fetched from Open-Meteo and saved with aircon sessions.'));
+    const pref=Btn('bgfull','Lists & Defaults',openListsDefaults);pref.style.marginBottom='10px';c.appendChild(pref);
+    const rf=Btn('bg','Refresh Weather',()=>updateWeather(true));rf.style.flex='1.2';
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';
+    const sa=Btn('bp','Save',saveSettings);sa.style.flex='1.6';c.appendChild(Mr(ca,rf,sa));return M('Settings',c);
+  }
+  if(S.modal==='listsDefaults'){
+    const c=D(''),f=S.listsF;
+    const g2=D('g2');
+    const db=Inp('',{type:'number',inputmode:'decimal',value:f.dailyBudget});db.oninput=e=>f.dailyBudget=e.target.value;g2.appendChild(Fg('Daily Meals Budget',db));
+    const gb=Inp('',{type:'number',inputmode:'decimal',value:f.groceryBudget});gb.oninput=e=>f.groceryBudget=e.target.value;g2.appendChild(Fg('Monthly Grocery Budget',gb));
+    c.appendChild(g2);
+    const ta=(key,label,sub)=>{const el=h('textarea',{cls:'inp',rows:'5',style:'resize:vertical;line-height:1.4',value:f[key]||''});el.value=f[key]||'';el.oninput=e=>f[key]=e.target.value;c.appendChild(Fg(label,el,sub||'One label per line. Delete a line to remove it.'));};
+    ta('foodSources','Food Sources','Keep Groceries if you want food entries to add pantry stock.');
+    ta('homeCategories','Home Categories');
+    ta('homeStores','Home Stores');
+    ta('applianceCategories','Appliance Categories');
+    const ca=Btn('bg','Cancel',()=>set({modal:'settings'}));ca.style.flex='1';
+    const sa=Btn('bp','Save',saveListsDefaults);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Lists & Defaults',c);
+  }
   if(S.modal==='airSet'){
     const c=D('');
     const ri=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.rate});ri.oninput=e=>S.airSetF.rate=e.target.value;c.appendChild(Fg('Meralco Rate (₱/kWh)',ri));
     const rdi=Inp('',{type:'number',inputmode:'numeric',min:'1',max:'31',value:S.airSetF.readDay||12});rdi.oninput=e=>S.airSetF.readDay=e.target.value;c.appendChild(Fg('Meter Read Day',rdi,'Your cycle starts the next day and ends on this day. Example: 12 means Apr 13-May 12.'));
+    c.appendChild(Fg('Default Aircon Mode',Sel(airconModeLabel(S.airSetF.defaultMode,S.airSetF.defaultSleep),AIRCON_MODES,v=>{S.airSetF.defaultMode=v.toLowerCase();S.airSetF.defaultSleep=S.airSetF.defaultMode==='sleep';}),'Used by Start Aircon and new manual aircon sessions.'));
     const gA=D('g2');
     const stfg=D('fg');stfg.appendChild(h('label',{cls:'fl'},'Initial kWh/hr'));const sti=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.startup});sti.oninput=e=>S.airSetF.startup=e.target.value;stfg.appendChild(sti);gA.appendChild(stfg);
     const sdFg=D('fg');sdFg.appendChild(h('label',{cls:'fl'},'Sleep Day'));const sdi=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.sleepDay});sdi.oninput=e=>S.airSetF.sleepDay=e.target.value;sdFg.appendChild(sdi);gA.appendChild(sdFg);
     c.appendChild(gA);
     const gB=D('g2');
     const snFg=D('fg');snFg.appendChild(h('label',{cls:'fl'},'Sleep Night'));const sni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.sleepNight});sni.oninput=e=>S.airSetF.sleepNight=e.target.value;snFg.appendChild(sni);gB.appendChild(snFg);
-    const dFg=D('fg');dFg.appendChild(h('label',{cls:'fl'},'Normal Day'));const dni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.day});dni.oninput=e=>S.airSetF.day=e.target.value;dFg.appendChild(dni);gB.appendChild(dFg);
+    const edFg=D('fg');edFg.appendChild(h('label',{cls:'fl'},'Eco Day'));const edi=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.ecoDay});edi.oninput=e=>S.airSetF.ecoDay=e.target.value;edFg.appendChild(edi);gB.appendChild(edFg);
     c.appendChild(gB);
     const gC=D('g2');
-    const nFg=D('fg');nFg.appendChild(h('label',{cls:'fl'},'Normal Night'));const nni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.night});nni.oninput=e=>S.airSetF.night=e.target.value;nFg.appendChild(nni);gC.appendChild(nFg);
-    const tFg=D('fg');tFg.appendChild(h('label',{cls:'fl'},'Default Temp (C)'));const dti=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.defaultTemp});dti.oninput=e=>S.airSetF.defaultTemp=e.target.value;tFg.appendChild(dti);gC.appendChild(tFg);
+    const enFg=D('fg');enFg.appendChild(h('label',{cls:'fl'},'Eco Night'));const eni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.ecoNight});eni.oninput=e=>S.airSetF.ecoNight=e.target.value;enFg.appendChild(eni);gC.appendChild(enFg);
+    const dFg=D('fg');dFg.appendChild(h('label',{cls:'fl'},'Normal Day'));const dni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.day});dni.oninput=e=>S.airSetF.day=e.target.value;dFg.appendChild(dni);gC.appendChild(dFg);
     c.appendChild(gC);
-    const dsr=D('row');dsr.style.cssText='justify-content:flex-start;gap:8px;margin:3px 0 12px';
-    const dcb=h('input',{type:'checkbox',checked:S.airSetF.defaultSleep!==false,style:'width:18px;height:18px'});dcb.onchange=e=>S.airSetF.defaultSleep=e.target.checked;
-    dsr.appendChild(dcb);dsr.appendChild(h('span',{style:'font-size:12.5px;font-weight:700;color:#3a2818'},'Default to Sleep Mode'));c.appendChild(dsr);
-    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;margin-bottom:12px;line-height:1.55'},'For a 23 sqm mostly sealed room at 28-30C, the default sleep-mode rates are a reasonable starting point. Tune after comparing with your meter.'));
+    const gD=D('g2');
+    const nFg=D('fg');nFg.appendChild(h('label',{cls:'fl'},'Normal Night'));const nni=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.night});nni.oninput=e=>S.airSetF.night=e.target.value;nFg.appendChild(nni);
+    const tFg=D('fg');tFg.appendChild(h('label',{cls:'fl'},'Default Set Temp (C)'));const dti=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.defaultTemp});dti.oninput=e=>S.airSetF.defaultTemp=e.target.value;tFg.appendChild(dti);
+    gD.appendChild(nFg);gD.appendChild(tFg);c.appendChild(gD);
+    const gE=D('g2');
+    const tbFg=D('fg');tbFg.appendChild(h('label',{cls:'fl'},'Temp Baseline (C)'));const tbi=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.tempBaseline||29});tbi.oninput=e=>S.airSetF.tempBaseline=e.target.value;tbFg.appendChild(tbi);gE.appendChild(tbFg);
+    const tsFg=D('fg');tsFg.appendChild(h('label',{cls:'fl'},'Temp Step % / C'));const tsi=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.tempStep||7});tsi.oninput=e=>S.airSetF.tempStep=e.target.value;tsFg.appendChild(tsi);gE.appendChild(tsFg);
+    c.appendChild(gE);
+    const gF=D('g2');
+    const obFg=D('fg');obFg.appendChild(h('label',{cls:'fl'},'Outdoor Baseline (C)'));const obi=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.outdoorBaseline||30});obi.oninput=e=>S.airSetF.outdoorBaseline=e.target.value;obFg.appendChild(obi);gF.appendChild(obFg);
+    const osFg=D('fg');osFg.appendChild(h('label',{cls:'fl'},'Outdoor Step % / C'));const osi=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.outdoorStep||2.5});osi.oninput=e=>S.airSetF.outdoorStep=e.target.value;osFg.appendChild(osi);gF.appendChild(osFg);
+    c.appendChild(gF);
+    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;margin-bottom:12px;line-height:1.55'},`${AIRCON_MODEL_PROFILE.model} profile: about ${AIRCON_MODEL_PROFILE.ratedWatts}W rated, ${AIRCON_MODEL_PROFILE.minWatts}-${AIRCON_MODEL_PROFILE.maxWatts}W inverter range, CSPF ${AIRCON_MODEL_PROFILE.cspf}. Eco is a separate preset beside Sleep and Normal. Set temp and outdoor temp adjust the running side of the estimate while startup tapers during the first hour.`));
     const tvw=Inp('',{type:'number',inputmode:'decimal',value:S.airSetF.tvWatts});tvw.oninput=e=>S.airSetF.tvWatts=e.target.value;c.appendChild(Fg('TV Watts',tvw,'Xiaomi TV A Pro 65 2025 official spec: 175W.'));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save Settings',saveAirSet);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Electricity Config',c);
+  }
+  if(S.modal==='airconProfile'){
+    const c=D(''),p=S.airconProfileF;
+    const mi=Inp('',{type:'text',value:p.model||''});mi.oninput=e=>p.model=e.target.value;c.appendChild(Fg('Indoor Model',mi));
+    const oi=Inp('',{type:'text',value:p.outdoorModel||''});oi.oninput=e=>p.outdoorModel=e.target.value;c.appendChild(Fg('Outdoor Model',oi));
+    const g1=D('g2');
+    const ck=D('fg');ck.appendChild(h('label',{cls:'fl'},'Cooling kW'));const cki=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:p.coolingKw});cki.oninput=e=>p.coolingKw=e.target.value;ck.appendChild(cki);g1.appendChild(ck);
+    const rw=D('fg');rw.appendChild(h('label',{cls:'fl'},'Rated Watts'));const rwi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:p.ratedWatts});rwi.oninput=e=>p.ratedWatts=e.target.value;rw.appendChild(rwi);g1.appendChild(rw);c.appendChild(g1);
+    const g2=D('g2');
+    const mn=D('fg');mn.appendChild(h('label',{cls:'fl'},'Min Watts'));const mni=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:p.minWatts});mni.oninput=e=>p.minWatts=e.target.value;mn.appendChild(mni);g2.appendChild(mn);
+    const mx=D('fg');mx.appendChild(h('label',{cls:'fl'},'Max Watts'));const mxi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:p.maxWatts});mxi.oninput=e=>p.maxWatts=e.target.value;mx.appendChild(mxi);g2.appendChild(mx);c.appendChild(g2);
+    const g3=D('g2');
+    const cf=D('fg');cf.appendChild(h('label',{cls:'fl'},'CSPF'));const cfi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:p.cspf});cfi.oninput=e=>p.cspf=e.target.value;cf.appendChild(cfi);g3.appendChild(cf);
+    const dk=D('fg');dk.appendChild(h('label',{cls:'fl'},'DOE Monthly kWh'));const dki=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:p.doeMonthlyKwh});dki.oninput=e=>p.doeMonthlyKwh=e.target.value;dk.appendChild(dki);g3.appendChild(dk);c.appendChild(g3);
+    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},'These specs describe your aircon profile. Estimate cost still comes from session mode, temp, kWh/hr rates, and Meralco rate.'));
+    const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Save Profile',saveAirconProfile);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Edit Aircon Profile',c);
   }
   if(S.modal==='batchEdit'&&S.batchDraft){
     const dr=S.batchDraft,t=S.batchType,c=D('');
     const count=(t==='food'?S.selFood:S.selHome).size;
     c.appendChild(h('p',{style:'font-size:11.5px;color:#8a7260;margin-bottom:12px;line-height:1.5'},`Editing ${count} selected ${t==='food'?'food':'home'} line${count!==1?'s':''}. Blank fields stay unchanged.`));
     if(t==='food'){
-      c.appendChild(Fg('Source',Sel('', ['',...FSRC],v=>{dr.source=v;})));
+      c.appendChild(Fg('Source',Sel('', ['',...foodSources()],v=>{dr.source=v;})));
     }else{
-      c.appendChild(Fg('Category',Sel('', ['',...HCATS],v=>{dr.category=v;})));
-      c.appendChild(Fg('Store',Sel('', ['',...STORES],v=>{dr.store=v;})));
+      c.appendChild(Fg('Category',Sel('', ['',...homeCategories()],v=>{dr.category=v;})));
+      c.appendChild(Fg('Store',Sel('', ['',...homeStores()],v=>{dr.store=v;})));
     }
     const nt=Inp('',{type:'text',placeholder:'Leave blank to keep existing notes',value:dr.note||''});nt.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',nt));
     const di=Inp('',{type:'date',value:dr.date||''});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
@@ -1628,32 +2058,39 @@ function renderModal(){
     const dr=S.editDraft,t=S.editType;
     const c=D('');
     if(t==='food'){
-      const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'Amount',value:dr.amount});ai.oninput=e=>dr.amount=e.target.value;setTimeout(()=>ai.focus(),50);c.appendChild(Fg('Amount (₱)',ai));
-      c.appendChild(Fg('Source',Sel(dr.source,FSRC,v=>{dr.source=v;})));
+      if(dr.grossAmount===undefined)dr.grossAmount=dr.amount||0;if(dr.discount===undefined)dr.discount=0;
+      const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'Subtotal',value:dr.grossAmount});ai.oninput=e=>dr.grossAmount=e.target.value;setTimeout(()=>ai.focus(),50);c.appendChild(Fg('Subtotal (₱)',ai));
+      const dii=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:dr.discount||''});dii.oninput=e=>dr.discount=e.target.value;c.appendChild(Fg('Discount (₱)',dii));
+      c.appendChild(Fg('Source',Sel(dr.source,foodSources(),v=>{dr.source=v;})));
       const ni=Inp('',{type:'text',placeholder:'Notes',value:dr.note||''});ni.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',ni));
       const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
     } else if(t==='home'){
-      if(!dr.qty)dr.qty=1;if(!dr.unitPrice)dr.unitPrice=dr.amount||0;if(!dr.unit)dr.unit='pcs';
+      if(!dr.qty)dr.qty=1;if(!dr.unitPrice)dr.unitPrice=dr.grossAmount||dr.amount||0;if(!dr.unit)dr.unit='pcs';if(dr.discount===undefined)dr.discount=0;
       const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
       const g2=D('g2');
-      const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',value:dr.qty});qi.oninput=e=>{dr.qty=e.target.value;ai.value=((parseFloat(dr.unitPrice)||0)*(parseFloat(dr.qty)||1)).toFixed(2);dr.amount=ai.value;};qfg.appendChild(qi);g2.appendChild(qfg);
-      const upfg=D('fg');upfg.appendChild(h('label',{cls:'fl'},'Unit Price (₱)'));const ui=Inp('',{type:'number',inputmode:'decimal',value:dr.unitPrice});ui.oninput=e=>{dr.unitPrice=e.target.value;ai.value=((parseFloat(dr.unitPrice)||0)*(parseFloat(dr.qty)||1)).toFixed(2);dr.amount=ai.value;};upfg.appendChild(ui);g2.appendChild(upfg);c.appendChild(g2);
+      const calcHomeEdit=()=>{const total=Math.max(0,(parseFloat(dr.unitPrice)||0)*(parseFloat(dr.qty)||1)-(parseFloat(dr.discount)||0));ai.value=total.toFixed(2);dr.amount=ai.value;};
+      const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',value:dr.qty});qi.oninput=e=>{dr.qty=e.target.value;calcHomeEdit();};qfg.appendChild(qi);g2.appendChild(qfg);
+      const upfg=D('fg');upfg.appendChild(h('label',{cls:'fl'},'Unit Price (₱)'));const ui=Inp('',{type:'number',inputmode:'decimal',value:dr.unitPrice});ui.oninput=e=>{dr.unitPrice=e.target.value;calcHomeEdit();};upfg.appendChild(ui);g2.appendChild(upfg);c.appendChild(g2);
       c.appendChild(Fg('Unit',Sel(dr.unit,UNITS,v=>{dr.unit=v;})));
+      const df=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:dr.discount||''});df.oninput=e=>{dr.discount=e.target.value;calcHomeEdit();};c.appendChild(Fg('Discount (₱)',df));
       const ai=Inp('',{type:'number',inputmode:'decimal',value:dr.amount,readonly:true});c.appendChild(Fg('Total (₱)',ai));
-      c.appendChild(Fg('Category',Sel(dr.category||HCATS[0],HCATS,v=>{dr.category=v;})));
-      c.appendChild(Fg('Store',Sel(dr.store||STORES[0],STORES,v=>{dr.store=v;})));
+      c.appendChild(Fg('Category',Sel(dr.category||homeCategories()[0],homeCategories(),v=>{dr.category=v;})));
+      c.appendChild(Fg('Store',Sel(dr.store||homeStores()[0],homeStores(),v=>{dr.store=v;})));
       const nt=Inp('',{type:'text',value:dr.note||''});nt.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',nt));
       const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
     } else if(t==='aircon'){
-      if(!dr.start)dr.start='22:00';if(!dr.end)dr.end=timePlus(dr.start,(parseFloat(dr.hours)||8)*60)||'06:00';if(dr.sleepMode===undefined)dr.sleepMode=true;if(dr.tempC===undefined)dr.tempC=S.data.airconDefaultTemp||'29';
+      if(!dr.start)dr.start='22:00';if(!dr.end)dr.end=timePlus(dr.start,(parseFloat(dr.hours)||8)*60)||'06:00';dr.mode=airconModeFrom(dr.mode,dr.sleepMode);dr.sleepMode=dr.mode==='sleep';if(dr.tempC===undefined)dr.tempC=S.data.airconDefaultTemp||'29';if(dr.roomTemp===undefined)dr.roomTemp='';
       const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
       const g2=D('g2');
       const sfg=D('fg');sfg.appendChild(h('label',{cls:'fl'},'Start Time'));sfg.appendChild(Time12Control(dr.start,v=>dr.start=v));g2.appendChild(sfg);
       const efg=D('fg');efg.appendChild(h('label',{cls:'fl'},'End Time'));efg.appendChild(Time12Control(dr.end,v=>dr.end=v));g2.appendChild(efg);c.appendChild(g2);
-      const sr=D('row');sr.style.cssText='justify-content:flex-start;gap:8px;margin:3px 0 12px';
-      const cb=h('input',{type:'checkbox',checked:dr.sleepMode!==false,style:'width:18px;height:18px'});cb.onchange=e=>dr.sleepMode=e.target.checked;
-      sr.appendChild(cb);sr.appendChild(h('span',{style:'font-size:12.5px;font-weight:700;color:#3a2818'},'Sleep Mode'));c.appendChild(sr);
-      const ti=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional, e.g. 29',value:dr.tempC||''});ti.oninput=e=>dr.tempC=e.target.value;c.appendChild(Fg('Room Temp (C)',ti,'Optional. Your usual sleep-mode range is 28-30C.'));
+      c.appendChild(Fg('Mode',Sel(airconModeLabel(dr.mode,dr.sleepMode),AIRCON_MODES,v=>{dr.mode=v.toLowerCase();dr.sleepMode=dr.mode==='sleep';})));
+      const ti=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 29',value:dr.tempC||''});ti.oninput=e=>dr.tempC=e.target.value;c.appendChild(Fg('Aircon Set Temp (C)',ti,`Adjusts running kWh after the first hour from a ${S.data.airconTempBaseline||29}C baseline.`));
+      const rti=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional, from digital clock',value:dr.roomTemp||''});rti.oninput=e=>dr.roomTemp=e.target.value;c.appendChild(Fg('Current Room Temp (C)',rti,'Saved as context only for now.'));
+      const wg=D('g2');
+      const otFg=D('fg');otFg.appendChild(h('label',{cls:'fl'},'Outdoor Temp (C)'));const oti=Inp('',{type:'number',inputmode:'decimal',value:dr.outdoorTemp||''});oti.oninput=e=>dr.outdoorTemp=e.target.value;otFg.appendChild(oti);wg.appendChild(otFg);
+      const ohFg=D('fg');ohFg.appendChild(h('label',{cls:'fl'},'Humidity %'));const ohi=Inp('',{type:'number',inputmode:'decimal',value:dr.outdoorHumidity||''});ohi.oninput=e=>dr.outdoorHumidity=e.target.value;ohFg.appendChild(ohi);wg.appendChild(ohFg);c.appendChild(wg);
+      const ofi=Inp('',{type:'number',inputmode:'decimal',value:dr.outdoorFeels||''});ofi.oninput=e=>dr.outdoorFeels=e.target.value;c.appendChild(Fg('Feels Like (C)',ofi));
     } else if(t==='tv'){
       if(!dr.start)dr.start='19:00';if(!dr.end)dr.end=timePlus(dr.start,(parseFloat(dr.hours)||1)*60)||'22:00';
       const g2=D('g2');
@@ -1664,7 +2101,7 @@ function renderModal(){
     } else if(t==='appliance'){
       if(!dr.qty)dr.qty=1;if(!dr.sessionMinutes&&!dr.alwaysOn)dr.sessionMinutes=Math.max(1,Math.round((parseFloat(dr.hoursPerDay)||1)*60));
       const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Appliance Name',ni));
-      c.appendChild(Fg('Category',Sel(dr.category||'Others',APPLIANCE_CATS,v=>{dr.category=v;})));
+      c.appendChild(Fg('Category',Sel(dr.category||'Others',applianceCategories(),v=>{dr.category=v;})));
       const g1=D('g2');
       const wfg=D('fg');wfg.appendChild(h('label',{cls:'fl'},'Watts'));const wi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:dr.watts});wi.oninput=e=>dr.watts=e.target.value;wfg.appendChild(wi);g1.appendChild(wfg);
       const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:dr.qty});qi.oninput=e=>dr.qty=e.target.value;qfg.appendChild(qi);g1.appendChild(qfg);c.appendChild(g1);
@@ -1691,7 +2128,7 @@ function renderModal(){
       const g2=D('g2');
       const pfg=D('fg');pfg.appendChild(h('label',{cls:'fl'},'Price (₱)'));const pi=Inp('',{type:'number',inputmode:'decimal',value:dr.price});pi.oninput=e=>dr.price=e.target.value;pfg.appendChild(pi);g2.appendChild(pfg);
       const ufg=D('fg');ufg.appendChild(h('label',{cls:'fl'},'Unit'));ufg.appendChild(Sel(dr.unit||'pcs',UNITS,v=>{dr.unit=v;}));g2.appendChild(ufg);c.appendChild(g2);
-      c.appendChild(Fg('Store',Sel(dr.store||STORES[0],STORES,v=>{dr.store=v;})));
+      c.appendChild(Fg('Store',Sel(dr.store||homeStores()[0],homeStores(),v=>{dr.store=v;})));
     } else if(t==='stock'){
       const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
       c.appendChild(Fg('Category',Sel(dr.category||SCATS[0],SCATS,v=>{dr.category=v;})));
@@ -1703,7 +2140,7 @@ function renderModal(){
     }
     const ca=Btn('bg','Cancel',()=>set({modal:null,editType:null,editId:null,editDraft:null}));ca.style.flex='1';
     const sa=Btn('bp','Save Changes',saveEdit);sa.style.flex='2';c.appendChild(Mr(ca,sa));
-    const labels={food:'Edit Food Expense',home:'Edit Home Expense',aircon:'Edit Aircon Usage',tv:'Edit TV Usage',appliance:'Edit Appliance',applianceUsage:'Edit Appliance Session',price:'Edit Price',stock:'Edit Stock Item'};
+    const labels={food:'Edit Food Expense',home:'Edit Home Expense',aircon:'Edit Aircon Usage',tv:'Edit TV Usage',appliance:'Edit Appliance',applianceUsage:'Edit Appliance Session',price:'Edit Price',stock:'Edit Pantry Item'};
     return M(labels[t]||'Edit',c);
   }
   return null;
@@ -1711,13 +2148,12 @@ function renderModal(){
 
 // ─── MAIN RENDER ─────────────────────────────────────────────
 const TABS=[{id:'dash',icon:'🏠',label:'Home'},{id:'food',icon:'🍽️',label:'Food'},{id:'home',icon:'🧴',label:'Home'},{id:'bills',icon:'📋',label:'Bills'},{id:'aircon',icon:'⚡',label:'Electric'},{id:'scan',icon:'📸',label:'Scan'}];
-const SCREEN_LABELS={dash:'Overview',food:'Food Expenses',home:'Home & Toiletries',bills:'Bills',prices:'Price Comparison',scan:'AI Scanner',reports:'📊 Reports',stocks:'📦 Stocks & Inventory',aircon:'Electricity Usage',appliances:'Appliance Manager'};
+const SCREEN_LABELS={dash:'Overview',food:'Food Expenses',home:'Home & Toiletries',bills:'Bills',prices:'Price Comparison',scan:'AI Scanner',reports:'📊 Reports',stocks:'📦 Pantry & Stocks',aircon:'Electricity Usage',appliances:'Appliance Manager'};
 
 function render(){
   ensureLiveTick();
   openSw=null;
   const root=document.getElementById('app');root.innerHTML='';
-  if(!S.geminiKey){root.style.background='#1b4d35';root.appendChild(renderSetup());return;}
   root.style.background='#f7f3ee';
   const app=D('');app.style.cssText='max-width:480px;margin:0 auto;min-height:100vh;background:#f7f3ee;padding-bottom:72px';
   // Close swipe on tap outside
@@ -1727,7 +2163,7 @@ function render(){
   // Header
   const hdr=h('div',{cls:'hdr'});const hrow=h('div',{cls:'hrow'});
   hrow.appendChild(h('button',{cls:'h-menu',onClick:()=>set({drawerOpen:true})},'☰'));
-  const hmid=D('h-mid');hmid.appendChild(Object.assign(D('htitle'),{textContent:SCREEN_LABELS[S.tab]||'Ipon Tracker'}));hmid.appendChild(Object.assign(D('hsub'),{textContent:'Budget · Prices · Savings'}));
+  const hmid=D('h-mid');hmid.appendChild(Object.assign(D('htitle'),{textContent:SCREEN_LABELS[S.tab]||'Budget Tracker'}));hmid.appendChild(Object.assign(D('hsub'),{textContent:'Budget · Prices · Savings'}));
   const hbal=D('h-bal');hbal.appendChild(Object.assign(D('hbl'),{textContent:'Balance'}));hbal.appendChild(Object.assign(D('hbv'),{textContent:fmt(S.data.balance)}));
   hrow.appendChild(hmid);hrow.appendChild(hbal);hdr.appendChild(hrow);app.appendChild(hdr);
   // Content
@@ -1755,6 +2191,7 @@ function render(){
   app.appendChild(tb);
   const modal=renderModal();if(modal)app.appendChild(modal);
   root.appendChild(app);
+  ensureWeather();
 }
 
 render();
