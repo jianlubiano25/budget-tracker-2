@@ -1701,7 +1701,7 @@ function renderMeterAudit(){
   card.appendChild(hdr);
   if(!S.auditOpen)return card;
   const cp=D('cp');
-  const grid=D('g2');grid.style.marginBottom='8px';
+  const grid=D('g2 audit-grid');grid.style.marginBottom='8px';
   const addField=(label,key,type='text',step='')=>{
     const input=Inp('',{type,value:f[key]||'',...(step?{step}:{})});
     input.oninput=e=>S.auditF[key]=e.target.value;
