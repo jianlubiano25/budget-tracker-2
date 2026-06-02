@@ -9,7 +9,7 @@ Return ONLY a raw JSON array, no markdown:
 [{"name":"item","price":45.00,"qty":1,"unit":"kg/pcs/pack/etc","store":"infer or Unknown","category":"Food or Home","subcat":"Ulam (Viand) or Vegetables or Rice & Grains or Snacks or Drinks or Condiments & Sauces or Cleaning Supplies or Toiletries & Personal Care or Laundry or Kitchen Supplies or Medicine & First Aid or Others","note":"optional"}]
 
 If no prices found, return: []`;
-const FSRC=['Carinderia','Groceries','Palengke/Home-cooked','Grab/Delivery','Fast Food','Restaurant','Sari-sari store','Others'];
+const FSRC=['Carinderia','Groceries','Palengke','Home-cooked','Grab/Delivery','Fast Food','Restaurant','Sari-sari store','Others'];
 const STORES=['Palengke','Supermarket','Puregold','SM Savemore','Robinsons','Shopee/Lazada','Sari-sari','Others'];
 const FCATS=['Ulam (Viand)','Vegetables','Rice & Grains','Snacks','Drinks','Condiments & Sauces','Others'];
 const HCATS=['Cleaning Supplies','Toiletries & Personal Care','Laundry','Kitchen Supplies','Bedding & Linen','Medicine & First Aid','Others'];
@@ -41,7 +41,7 @@ const stockFromHome=(item,id=uid())=>({id,name:item.name,category:stockCatFromHo
 const groceryName=tx=>String(tx.stockName||tx.note||'Groceries').split(' · ')[0].trim()||'Groceries';
 const stockCatFromFood=subcat=>subcat==='Condiments & Sauces'?'Condiments':'Food Staples';
 const stockFromGrocery=(tx,id=uid())=>({id,name:groceryName(tx),category:tx.stockCategory||stockCatFromFood(tx.subcat)||'Food Staples',quantity:parseFloat(tx.qty)||1,unit:tx.unit||'pcs',minQty:0,note:'From groceries'});
-const toStr=()=>new Date().toISOString().split('T')[0];
+const toStr=()=>dateOf(new Date());
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const resizeImage=(file,maxW=1600,maxH=1600)=>new Promise((res,rej)=>{
   const r=new FileReader();r.onload=e=>{
@@ -58,6 +58,7 @@ const resizeImage=(file,maxW=1600,maxH=1600)=>new Promise((res,rej)=>{
 const mk=d=>{const dt=d?new Date(d+'T12:00:00'):new Date();return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;};
 const mklbl=k=>{const[y,m]=k.split('-');return new Date(y,m-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});};
 const curMk=()=>mk();
+const shiftMonthKey=(k,delta)=>{const[y,m]=k.split('-').map(Number),d=new Date(y,m-1+delta,1,12);return mk(dateOf(d));};
 const pad2=n=>String(n).padStart(2,'0');
 const dateOf=dt=>`${dt.getFullYear()}-${pad2(dt.getMonth()+1)}-${pad2(dt.getDate())}`;
 const timeOf=dt=>`${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
@@ -73,6 +74,13 @@ function cycleForDate(dateLike,readDay=meralcoReadDay()){
   const prevRead=Math.min(readDay,daysInMonth(end.getFullYear(),end.getMonth()-1));
   const start=new Date(end.getFullYear(),end.getMonth()-1,prevRead+1,12);
   return{key:dateOf(end),start,end,readDay};
+}
+function shiftCycleKey(cycleKey,delta,readDay=meralcoReadDay()){
+  const base=dtOf(cycleKey||toStr());
+  base.setMonth(base.getMonth()+delta);
+  const last=daysInMonth(base.getFullYear(),base.getMonth());
+  base.setDate(Math.min(readDay,last));
+  return cycleForDate(base,readDay).key;
 }
 function cycleLabel(c){
   const sameYear=c.start.getFullYear()===c.end.getFullYear();
@@ -93,6 +101,13 @@ function fmtTime12(t){
 }
 function minsOfDay(t){const m=String(t||'').match(/^(\d{1,2}):(\d{2})$/);if(!m)return NaN;const h=+m[1],mi=+m[2];return h>=0&&h<24&&mi>=0&&mi<60?h*60+mi:NaN;}
 function timePlus(t,minutes){const sm=minsOfDay(t);if(isNaN(sm))return '';const m=((sm+Math.round(minutes))%1440+1440)%1440;return `${pad2(Math.floor(m/60))}:${pad2(m%60)}`;}
+function minutesBetween(start,end){const sm=minsOfDay(start),em=minsOfDay(end);if(isNaN(sm)||isNaN(em))return 0;let mins=em-sm;if(mins<=0)mins+=1440;return mins;}
+function durationLabel(minutes){
+  const mins=Math.max(0,Math.round(parseFloat(minutes)||0)),h=Math.floor(mins/60),m=mins%60;
+  if(h&&m)return `${h}h ${m}m`;
+  if(h)return `${h}h`;
+  return `${m}m`;
+}
 function isDayMinute(min){const m=((min%1440)+1440)%1440;return m>=360&&m<1080;}
 function airconRates(data){
   const d=data||S?.data||{};
@@ -169,12 +184,60 @@ function applianceMonthly(a,rate=S?.data?.meralcoRate||14.3345){
 function applianceLabel(a){
   const e=applianceMonthly(a);
   const mins=parseFloat(a.sessionMinutes)||Math.round((parseFloat(a.hoursPerDay)||1)*60)||60;
-  return `${e.qty}x · ${e.watts}W · ${a.alwaysOn?'24/7':`${mins} min/session`}`;
+  return `${e.qty}x · ${e.watts}W · ${a.alwaysOn?'24/7':`${durationLabel(mins)}/session`}`;
 }
 function applianceSessionEstimate(appliance,minutes,rate=S?.data?.meralcoRate||14.3345){
   const watts=parseFloat(appliance?.watts)||0,qty=parseFloat(appliance?.qty)||1,mins=parseFloat(minutes)||0;
   const kwh=watts*qty*(mins/60)/1000;
   return{kwh,cost:kwh*rate};
+}
+function auditDateTime(date,time,endOfDay=false){
+  if(!date)return null;
+  const t=time|| (endOfDay?'23:59':'00:00');
+  const dt=new Date(`${date}T${t}:00`);
+  return isNaN(dt)?null:dt;
+}
+function usageDateRange(u,start,end){
+  const hasTime=u.start&&u.end;
+  if(hasTime){
+    const s=auditDateTime(u.date,u.start),e=auditDateTime(u.date,u.end);
+    if(!s||!e)return null;
+    if(e<=s)e.setDate(e.getDate()+1);
+    return{s,e,exact:true};
+  }
+  const s=auditDateTime(u.date,'00:00'),e=auditDateTime(u.date,'23:59');
+  return s&&e?{s,e,exact:false}:null;
+}
+function overlapsRange(s,e,start,end){return s<end&&e>start;}
+function meterAudit(data=S?.data,f=S?.auditF){
+  const start=auditDateTime(f?.startDate,f?.startTime),end=auditDateTime(f?.endDate,f?.endTime);
+  const startRead=parseFloat(f?.startRead),endRead=parseFloat(f?.endRead),rate=parseFloat(data?.meralcoRate)||14.3345;
+  if(!start||!end||end<=start)return{valid:false,error:'Enter a valid start and end time.'};
+  const meterKwh=!isNaN(startRead)&&!isNaN(endRead)?endRead-startRead:0;
+  const hours=(end-start)/36e5;
+  const include=(u)=>{const r=usageDateRange(u,start,end);return r&&overlapsRange(r.s,r.e,start,end);};
+  const aircon=(data?.airconUsage||[]).filter(include);
+  const tv=(data?.tvUsage||[]).filter(include);
+  const appliances=(data?.applianceUsage||[]).filter(include);
+  const sum=rows=>rows.reduce((s,u)=>s+(parseFloat(u.kwh)||0),0);
+  const airconKwh=sum(aircon),tvKwh=sum(tv),sessionKwh=sum(appliances);
+  const alwaysRows=(data?.appliances||[]).filter(a=>a.alwaysOn).map(a=>{
+    const watts=parseFloat(a.watts)||0,qty=parseFloat(a.qty)||1,kwh=watts*qty*hours/1000;
+    return{...a,kwh,cost:kwh*rate};
+  });
+  const alwaysKwh=alwaysRows.reduce((s,a)=>s+a.kwh,0);
+  const loggedKwh=airconKwh+tvKwh+sessionKwh,estimatedKwh=loggedKwh+alwaysKwh;
+  const gap=meterKwh?meterKwh-estimatedKwh:0;
+  const matchPct=meterKwh>0?estimatedKwh/meterKwh*100:0;
+  return{valid:true,start,end,hours,meterKwh,aircon,tv,appliances,alwaysRows,airconKwh,tvKwh,sessionKwh,alwaysKwh,loggedKwh,estimatedKwh,gap,matchPct,rate};
+}
+function applianceSessionDraft(appliance,date=toStr()){
+  const mins=parseFloat(appliance?.sessionMinutes)||60,start=timeOf(new Date());
+  return{applianceId:appliance?.id||'',date,start,end:timePlus(start,mins),minutes:String(mins)};
+}
+function timedSessionDraft(form={},fallbackMinutes=60){
+  const start=timeOf(new Date()),mins=minutesBetween(form.start,form.end)||fallbackMinutes;
+  return{...form,date:toStr(),start,end:timePlus(start,mins)};
 }
 function activeElapsedMinutes(s,now=new Date()){return Math.max(1,Math.round((now-new Date(s.startedAt))/60000));}
 function activeEstimate(s,now=new Date(),data=S?.data){
@@ -207,6 +270,52 @@ function electricityCycleEstimate(cycle,data=S?.data){
   const totalKwh=airconKwh+tvKwh+sessionKwh+alwaysKwh;
   return{airconKwh,tvKwh,sessionKwh,alwaysKwh,totalKwh,logs:aircon.length+tv.length+applianceSessions.length};
 }
+function electricityDailyChart(cycle,data=S?.data,range='cycle'){
+  const usage=data?.airconUsage||[],tvUsage=data?.tvUsage||[],applianceUsage=data?.applianceUsage||[];
+  const alwaysOn=data?.appliances||[],dailyAlwaysOnCost=alwaysOn.reduce((s,a)=>s+applianceMonthly(a,data?.meralcoRate||14.3345).cost,0)/30;
+  const dailyAlwaysOnKwh=alwaysOn.reduce((s,a)=>s+applianceMonthly(a,data?.meralcoRate||14.3345).kwh,0)/30;
+  const meralcoKwh=meralcoKwhForCycle(cycle,data),meralcoDailyKwh=meralcoKwh?meralcoKwh/cycleDays(cycle):0;
+  let days=[];
+  if(range==='7'){
+    days=Array.from({length:7},(_,i)=>{const dd=new Date();dd.setDate(dd.getDate()-(6-i));return dd;});
+  }else{
+    for(let dd=new Date(cycle.start);dd<=cycle.end;dd.setDate(dd.getDate()+1))days.push(new Date(dd));
+  }
+  return days.map(dd=>{
+    const ds=dateOf(dd),air=usage.filter(u=>u.date===ds),tv=tvUsage.filter(u=>u.date===ds),ap=applianceUsage.filter(u=>u.date===ds);
+    const airCost=air.reduce((s,u)=>s+u.cost,0),tvCost=tv.reduce((s,u)=>s+u.cost,0),apCost=ap.reduce((s,u)=>s+u.cost,0);
+    const airKwh=air.reduce((s,u)=>s+u.kwh,0),tvKwh=tv.reduce((s,u)=>s+u.kwh,0),apKwh=ap.reduce((s,u)=>s+u.kwh,0);
+    const estKwh=airKwh+tvKwh+apKwh+dailyAlwaysOnKwh;
+    return{label:range==='7'?chartLbl(dd):String(dd.getDate()),ds,cost:airCost+tvCost+apCost+dailyAlwaysOnCost,kwh:meralcoDailyKwh||estKwh,estimatedKwh:estKwh,meralcoDailyKwh,airCost,tvCost,applianceCost:apCost+dailyAlwaysOnCost,airKwh,tvKwh,applianceKwh:apKwh+dailyAlwaysOnKwh};
+  });
+}
+function mealsDailyChart(monthKey=curMk(),data=S?.data){
+  const [y,m]=monthKey.split('-').map(Number),days=daysInMonth(y,m-1),meals=(data?.transactions||[]).filter(t=>!isGroceryTx(t));
+  return Array.from({length:days},(_,i)=>{
+    const dd=new Date(y,m-1,i+1,12),ds=dateOf(dd),items=meals.filter(t=>t.date===ds),spend=items.reduce((s,t)=>s+t.amount,0);
+    return{ds,date:dd,label:String(i+1),items,count:items.length,spend,over:spend>(data?.dailyBudget||0)&&spend>0};
+  });
+}
+function electricityComparisonForMonth(monthKey,data=S?.data,actualKwh=0){
+  const readDay=meralcoReadDay(data),[y,m]=monthKey.split('-').map(Number),last=daysInMonth(y,m-1);
+  const candidates=[
+    billCycleForMonth(monthKey,readDay),
+    cycleForDate(`${monthKey}-01`,readDay),
+    cycleForDate(`${monthKey}-${pad2(last)}`,readDay),
+    cycleForDate(`${monthKey}-${pad2(Math.min(readDay,last))}`,readDay)
+  ];
+  [...(data?.airconUsage||[]),...(data?.tvUsage||[]),...(data?.applianceUsage||[])].forEach(u=>{
+    const c=cycleForDate(u.date,readDay),startMk=mk(dateOf(c.start)),endMk=mk(dateOf(c.end));
+    if(startMk===monthKey||endMk===monthKey||billMonthFromCycle(c)===monthKey)candidates.push(c);
+  });
+  const uniq=[...new Map(candidates.map(c=>[c.key,c])).values()];
+  const scored=uniq.map(c=>{
+    const est=electricityCycleEstimate(c,data),loggedKwh=est.airconKwh+est.tvKwh+est.sessionKwh;
+    return{cycle:c,est,loggedKwh,diff:actualKwh?Math.abs(est.totalKwh-actualKwh):0};
+  });
+  scored.sort((a,b)=>(b.loggedKwh>0)-(a.loggedKwh>0)||(actualKwh?a.diff-b.diff:0)||b.cycle.key.localeCompare(a.cycle.key));
+  return scored[0]||{cycle:billCycleForMonth(monthKey,readDay),est:electricityCycleEstimate(billCycleForMonth(monthKey,readDay),data),loggedKwh:0,diff:0};
+}
 function weatherSettings(data=S?.data){
   return{
     provider:data?.weatherProvider||DEFAULT_WEATHER.provider,
@@ -220,10 +329,54 @@ function weatherSettings(data=S?.data){
 function weatherSummary(w=S?.data?.weather){
   if(!w)return 'Weather not loaded';
   const parts=[];
+  const codeLabel=weatherCodeLabel(w.code);
   if(w.temp!=null)parts.push(`Outdoor ${Number(w.temp).toFixed(1)}C`);
+  if(codeLabel)parts.push(codeLabel);
   if(w.apparent!=null)parts.push(`Feels ${Number(w.apparent).toFixed(1)}C`);
   if(w.humidity!=null)parts.push(`Humidity ${Math.round(w.humidity)}%`);
+  if(w.time)parts.push(`Updated ${fmtTime12(String(w.time).slice(11,16))}`);
   return parts.join(' · ')||'Weather not loaded';
+}
+function weatherCodeLabel(code){
+  const c=Number(code);
+  if(c===0)return 'Clear';
+  if([1,2,3].includes(c))return ['Mainly clear','Partly cloudy','Overcast'][c-1];
+  if([45,48].includes(c))return 'Fog';
+  if([51,53,55].includes(c))return 'Drizzle';
+  if([56,57].includes(c))return 'Freezing drizzle';
+  if([61,63,65].includes(c))return 'Rain';
+  if([66,67].includes(c))return 'Freezing rain';
+  if([71,73,75,77].includes(c))return 'Snow';
+  if([80,81,82].includes(c))return 'Rain showers';
+  if([85,86].includes(c))return 'Snow showers';
+  if([95,96,99].includes(c))return 'Thunderstorm';
+  return '';
+}
+function weatherVisualType(code){
+  const c=Number(code);
+  if([45,48].includes(c))return 'fog';
+  if([95,96,99].includes(c))return 'storm';
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(c))return 'rain';
+  if([71,73,75,77,85,86].includes(c))return 'snow';
+  if([1,2,3].includes(c))return 'cloud';
+  return 'clear';
+}
+function weatherVisual(w){
+  const wrap=D(`wv ${weatherVisualType(w?.code)}`);
+  wrap.setAttribute('aria-hidden','true');
+  wrap.innerHTML='<div class="wv-glow"></div><div class="wv-sun"><span></span></div><div class="wv-cloud wv-cloud-a"></div><div class="wv-cloud wv-cloud-b"></div><div class="wv-rain wv-rain-a"></div><div class="wv-rain wv-rain-b"></div><div class="wv-rain wv-rain-c"></div><div class="wv-rain wv-rain-d"></div><div class="wv-bolt"></div><div class="wv-fog wv-fog-a"></div><div class="wv-fog wv-fog-b"></div><div class="wv-fog wv-fog-c"></div>';
+  return wrap;
+}
+function renderWeatherCard(data=S.data,{title='Weather'}={}){
+  const w=data.weather,ws=weatherSettings(data);
+  const card=D('card weather-card'),body=D('cp weather-body'),copy=D('weather-copy'),art=D('weather-art');
+  copy.appendChild(h('div',{cls:'lbl'},`${title} · ${ws.label}`));
+  copy.appendChild(h('div',{cls:'sf weather-temp'},w?.temp!=null?`${Number(w.temp).toFixed(1)}C`:'--'));
+  copy.appendChild(h('div',{cls:'weather-meta'},`${w?weatherSummary(w):(S.weatherLoading?'Loading Open-Meteo...':'Open-Meteo not loaded yet')}${S.weatherErr?' · '+S.weatherErr:''}`));
+  art.appendChild(weatherVisual(w));
+  art.appendChild(Btn('bgsm weather-refresh','Refresh',()=>updateWeather(true)));
+  body.appendChild(art);body.appendChild(copy);card.appendChild(body);
+  return card;
 }
 function weatherStale(data=S?.data){
   const t=Date.parse(data?.weather?.fetchedAt||'');
@@ -251,6 +404,9 @@ function ld(){try{const s=localStorage.getItem(SK);if(s){const d=JSON.parse(s);i
   if(!d.groceryBudget)d.groceryBudget=5000;
   if(!d.labels)d.labels=JSON.parse(JSON.stringify(LABEL_DEFAULTS));
   Object.keys(LABEL_DEFAULTS).forEach(k=>{if(!Array.isArray(d.labels[k])||!d.labels[k].length)d.labels[k]=LABEL_DEFAULTS[k];});
+  if((d.labels.foodSources||[]).includes('Palengke/Home-cooked')){
+    d.labels.foodSources=(d.labels.foodSources||[]).flatMap(x=>x==='Palengke/Home-cooked'?['Palengke','Home-cooked']:[x]);
+  }
   if(!d.bills)d.bills=JSON.parse(JSON.stringify(INIT.bills));d.bills=(d.bills||[]).map(b=>({...b,monthlyAmounts:b.monthlyAmounts||{},paid:b.paid||{},...(String(b.name||'').toLowerCase().includes('electric')?{monthlyKwh:b.monthlyKwh||{}}:{})}));
   if(!d.airconUsage)d.airconUsage=[];if(!d.tvUsage)d.tvUsage=[];if(!d.meralcoRate||d.meralcoRate===12.03)d.meralcoRate=14.3345;
   if(!d.meralcoReadDay)d.meralcoReadDay=12;
@@ -279,7 +435,8 @@ function sk(k){k?localStorage.setItem(GK,k):localStorage.removeItem(GK);}
 // ─── STATE ───────────────────────────────────────────────────
 let S={
   tab:'dash',data:ld(),geminiKey:lk(),drawerOpen:false,
-  modal:null,viewMk:curMk(),billsMk:curMk(),
+  modal:null,viewMk:curMk(),billsMk:curMk(),chartCycleKey:'',chartMonthKey:curMk(),selectedMealDate:toStr(),
+  auditOpen:false,
   airTimer:null,weatherLoading:false,weatherErr:'',
   // setup
   setupInput:'',setupErr:'',setupLoading:false,setupShow:false,
@@ -291,7 +448,8 @@ let S={
   airconF:{date:toStr(),start:'22:00',end:'06:00',mode:'sleep',sleepMode:true,tempC:'29',roomTemp:'',outdoorTemp:'',outdoorFeels:'',outdoorHumidity:''},
   tvF:{date:toStr(),start:'19:00',end:'22:00'},
   applianceF:{name:'',category:'Others',watts:'',qty:'1',sessionMinutes:'60',alwaysOn:false,note:''},
-  applianceSessionF:{applianceId:'',date:toStr(),minutes:''},
+  applianceSessionF:{applianceId:'',date:toStr(),start:'19:00',end:'20:00',minutes:''},
+  auditF:{startDate:'2026-05-31',startTime:'16:05',startRead:'43183',endDate:'2026-06-02',endTime:'18:03',endRead:'43199'},
   airSetF:{rate:'',readDay:'',startup:'',sleepDay:'',sleepNight:'',ecoDay:'',ecoNight:'',day:'',night:'',defaultMode:'sleep',defaultSleep:true,defaultTemp:'',tempBaseline:'29',tempStep:'7',outdoorBaseline:'30',outdoorStep:'2.5',tvWatts:''},
   airconProfileF:{model:'',outdoorModel:'',coolingKw:'',ratedWatts:'',minWatts:'',maxWatts:'',cspf:'',doeMonthlyKwh:''},
   settingsF:{geminiKey:'',weatherProvider:'open-meteo',weatherLabel:'',weatherLat:'',weatherLon:'',weatherElevation:'',weatherApiKey:''},
@@ -331,7 +489,7 @@ async function updateWeather(force=false){
     const res=await fetch(url);
     if(!res.ok)throw new Error('Weather request failed');
     const json=await res.json(),cur=json.current||{};
-    const weather={source:'Open-Meteo',label:ws.label,lat:ws.lat,lon:ws.lon,elevation:ws.elevation,temp:cur.temperature_2m,humidity:cur.relative_humidity_2m,apparent:cur.apparent_temperature,wind:cur.wind_speed_10m,code:cur.weather_code,time:cur.time,fetchedAt:new Date().toISOString()};
+    const weather={source:'Open-Meteo',label:ws.label,lat:ws.lat,lon:ws.lon,modelLat:json.latitude,modelLon:json.longitude,elevation:json.elevation??ws.elevation,temp:cur.temperature_2m,humidity:cur.relative_humidity_2m,apparent:cur.apparent_temperature,wind:cur.wind_speed_10m,code:cur.weather_code,time:cur.time,fetchedAt:new Date().toISOString()};
     S.weatherLoading=false;S.weatherErr='';
     setD(d=>({...d,weather}));
   }catch(e){
@@ -342,7 +500,9 @@ function ensureWeather(){if(!S.modal&&!S.weatherLoading&&weatherStale(S.data))up
 
 // ─── ACTIONS ────────────────────────────────────────────────
 function addTx(){
-  const gross=parseFloat(S.txF.amount),discount=Math.max(0,parseFloat(S.txF.discount)||0),amt=Math.max(0,gross-discount);if(!gross||gross<=0||amt<=0)return;
+  const isFreeMeal=S.txF.source==='Home-cooked';
+  const gross=isFreeMeal?0:Math.max(0,parseFloat(S.txF.amount)||0),discount=isFreeMeal?0:Math.max(0,parseFloat(S.txF.discount)||0),amt=Math.max(0,gross-discount);
+  if((!isFreeMeal&&(!gross||gross<=0||amt<=0))||(isFreeMeal&&!S.txF.note.trim()))return;
   const isGroceries=S.txF.source==='Groceries',stockId=isGroceries?uid():null;
   const tx={id:uid(),amount:amt,grossAmount:gross,discount,source:S.txF.source,note:S.txF.note,date:S.txF.date,...(isGroceries?{qty:parseFloat(S.txF.qty)||1,unit:S.txF.unit||'pcs',stockCategory:S.txF.stockCategory||'Food Staples',linkedStockId:stockId}:{})};
   setD(d=>({...d,balance:d.balance-amt,transactions:[tx,...d.transactions],stocks:isGroceries?[...(d.stocks||[]),stockFromGrocery(tx,stockId)]:(d.stocks||[])}));
@@ -429,12 +589,13 @@ function delAppliance(id){setD(d=>({...d,appliances:(d.appliances||[]).filter(x=
 function addApplianceUsage(){
   const appliances=S.data.appliances||[];
   const ap=appliances.find(a=>a.id===S.applianceSessionF.applianceId)||appliances.find(a=>!a.alwaysOn);
-  const minutes=parseFloat(S.applianceSessionF.minutes)||parseFloat(ap?.sessionMinutes)||0;
+  const start=S.applianceSessionF.start||'19:00',end=S.applianceSessionF.end||timePlus(start,parseFloat(ap?.sessionMinutes)||60)||'20:00';
+  const minutes=minutesBetween(start,end);
   if(!ap||ap.alwaysOn||!minutes)return;
   const est=applianceSessionEstimate(ap,minutes,S.data.meralcoRate);
-  const entry={id:uid(),applianceId:ap.id,name:ap.name,category:ap.category,date:S.applianceSessionF.date,minutes,watts:parseFloat(ap.watts)||0,qty:parseFloat(ap.qty)||1,kwh:est.kwh,cost:est.cost,rateAtTime:S.data.meralcoRate};
+  const entry={id:uid(),applianceId:ap.id,name:ap.name,category:ap.category,date:S.applianceSessionF.date,start,end,minutes,hours:minutes/60,watts:parseFloat(ap.watts)||0,qty:parseFloat(ap.qty)||1,kwh:est.kwh,cost:est.cost,rateAtTime:S.data.meralcoRate};
   setD(d=>({...d,applianceUsage:[entry,...(d.applianceUsage||[])]}));
-  set({applianceSessionF:{applianceId:ap.id,date:toStr(),minutes:String(ap.sessionMinutes||minutes)},modal:null});
+  set({applianceSessionF:{applianceId:ap.id,date:toStr(),start,end:timePlus(start,ap.sessionMinutes||minutes),minutes:String(ap.sessionMinutes||minutes)},modal:null});
 }
 function delApplianceUsage(id){setD(d=>({...d,applianceUsage:(d.applianceUsage||[]).filter(x=>x.id!==id)}));}
 function startActiveSession(type,opts={}){
@@ -477,7 +638,8 @@ function stopActiveSession(id){
     }
     const ap=(d.appliances||[]).find(a=>a.id===active.applianceId);
     const watts=parseFloat(ap?.watts)||parseFloat(active.watts)||0,qty=parseFloat(ap?.qty)||parseFloat(active.qty)||1,kwh=watts*qty*(minutes/60)/1000;
-    const entry={id:uid(),applianceId:active.applianceId,name:ap?.name||active.name,category:ap?.category||active.category||'Others',date:dateOf(new Date(active.startedAt)),minutes,watts,qty,kwh,cost:kwh*rate,rateAtTime:rate};
+    const startDt=new Date(active.startedAt);
+    const entry={id:uid(),applianceId:active.applianceId,name:ap?.name||active.name,category:ap?.category||active.category||'Others',date:dateOf(startDt),start:timeOf(startDt),end:timeOf(now),minutes,hours:minutes/60,watts,qty,kwh,cost:kwh*rate,rateAtTime:rate};
     return{...d,activeSessions,applianceUsage:[entry,...(d.applianceUsage||[])]};
   });
 }
@@ -539,7 +701,7 @@ function openSettings(){
 }
 function openListsDefaults(){
   const d=S.data;
-  set({modal:'listsDefaults',listsF:{
+  set({tab:'lists',modal:null,drawerOpen:false,listsF:{
     foodSources:foodSources(d).join('\n'),
     homeCategories:homeCategories(d).join('\n'),
     homeStores:homeStores(d).join('\n'),
@@ -604,9 +766,10 @@ function saveEdit(){
   const{editType:t,editId:id,editDraft:dr}=S;
   if(t==='food'){
     const old=S.data.transactions.find(x=>x.id===id);
-    const gross=parseFloat(dr.grossAmount??dr.amount)||old.grossAmount||old.amount;
-    const discount=Math.max(0,parseFloat(dr.discount)||0);
-    const newAmt=Math.max(0,gross-discount)||old.amount;
+    const isFreeMeal=dr.source==='Home-cooked';
+    const gross=isFreeMeal?0:Math.max(0,parseFloat(dr.grossAmount??dr.amount)||0);
+    const discount=isFreeMeal?0:Math.max(0,parseFloat(dr.discount)||0);
+    const newAmt=Math.max(0,gross-discount);
     const delta=newAmt-old.amount;
     setD(d=>{
       let stocks=[...(d.stocks||[])];
@@ -667,11 +830,12 @@ function saveEdit(){
   } else if(t==='applianceUsage'){
     const old=(S.data.applianceUsage||[]).find(x=>x.id===id);
     const appliance=(S.data.appliances||[]).find(a=>a.id===(dr.applianceId||old.applianceId));
-    const minutes=parseFloat(dr.minutes)||old.minutes;
+    const start=dr.start||old.start||'19:00',end=dr.end||old.end||timePlus(start,parseFloat(old.minutes)||parseFloat(appliance?.sessionMinutes)||60)||'20:00';
+    const minutes=minutesBetween(start,end)||parseFloat(dr.minutes)||old.minutes;
     const watts=parseFloat(appliance?.watts)||parseFloat(dr.watts)||old.watts||0;
     const qty=parseFloat(appliance?.qty)||parseFloat(dr.qty)||old.qty||1;
     const kwh=watts*qty*(minutes/60)/1000,cost=kwh*S.data.meralcoRate;
-    setD(d=>({...d,applianceUsage:(d.applianceUsage||[]).map(x=>x.id===id?{...old,...dr,applianceId:appliance?.id||old.applianceId,name:appliance?.name||dr.name||old.name,category:appliance?.category||old.category,minutes,watts,qty,kwh,cost,rateAtTime:S.data.meralcoRate}:x)}));
+    setD(d=>({...d,applianceUsage:(d.applianceUsage||[]).map(x=>x.id===id?{...old,...dr,applianceId:appliance?.id||old.applianceId,name:appliance?.name||dr.name||old.name,category:appliance?.category||old.category,start,end,minutes,hours:minutes/60,watts,qty,kwh,cost,rateAtTime:S.data.meralcoRate}:x)}));
   } else if(t==='price'){
     setD(d=>({...d,priceItems:d.priceItems.map(p=>p.id===id?{...p,...dr,price:parseFloat(dr.price)||p.price}:p)}));
   } else if(t==='stock'){
@@ -896,7 +1060,7 @@ function calc(){
   const mBurn=bTotal+avgD*30;
   const runway=mBurn>0?Math.floor(data.balance/(mBurn/30)):9999;
   const todayS=meals.filter(t=>t.date===toStr()).reduce((s,t)=>s+t.amount,0);
-  const chart=Array.from({length:7},(_,i)=>{const dd=new Date(now.getTime()-(6-i)*86400000),ds=dd.toISOString().split('T')[0];return{label:chartLbl(dd),spend:meals.filter(t=>t.date===ds).reduce((s,t)=>s+t.amount,0),ds};});
+  const chart=Array.from({length:7},(_,i)=>{const dd=new Date(now.getTime()-(6-i)*86400000),ds=dateOf(dd);return{label:chartLbl(dd),spend:meals.filter(t=>t.date===ds).reduce((s,t)=>s+t.amount,0),ds};});
   const maxS=Math.max(...chart.map(x=>x.spend),data.dailyBudget,1);
   return{bTotal,bUnpaid,avgD,mBurn,runway,todayS,groceryMonth,chart,maxS};
 }
@@ -1002,36 +1166,16 @@ function renderDash(){
   // Stats
   const g2=D('g2');g2.style.marginBottom='9px';
   const ob=todayS>data.dailyBudget;
-  const c1=D('card');c1.innerHTML=`<div class="cp"><div class="lbl">Today's Meals</div><div class="sf" style="font-size:23px;color:${ob?'#b83030':'#3a2818'};margin:2px 0">${fmt(todayS)}</div><div style="font-size:10.5px;color:#8a7260">Daily budget: ${fmt(data.dailyBudget)}</div>${ob?'<div style="font-size:10px;color:#b83030;font-weight:700;margin-top:1px">⚠️ Over budget</div>':''}</div>`;
+  const c1=D('card');c1.innerHTML=`<div class="cp"><div class="lbl">Today's Meals</div><div class="sf" style="font-size:23px;color:${ob?'#b83030':'#3a2818'};margin:2px 0">${fmt(todayS)}</div><div style="font-size:10.5px;color:#8a7260">Daily: ${fmt(data.dailyBudget)} · Monthly: ${fmt(data.dailyBudget*30)}</div>${ob?'<div style="font-size:10px;color:#b83030;font-weight:700;margin-top:1px">⚠️ Over budget</div>':''}</div>`;
   const c2=D('card');c2.innerHTML=`<div class="cp"><div class="lbl">Groceries This Month</div><div class="sf" style="font-size:23px;color:${groceryMonth>(data.groceryBudget||5000)?'#b83030':'#3a2818'};margin:2px 0">${fmt(groceryMonth)}</div><div style="font-size:10.5px;color:#8a7260">Monthly budget: ${fmt(data.groceryBudget||5000)}</div></div>`;
   g2.appendChild(c1);g2.appendChild(c2);sec.appendChild(g2);
-  const w=data.weather,ws=weatherSettings(data);
-  const wc=D('card');wc.innerHTML=`<div class="cp"><div class="row"><div><div class="lbl">Weather · ${ws.label}</div><div class="sf" style="font-size:22px;margin:2px 0">${w?.temp!=null?Number(w.temp).toFixed(1)+'C':'--'}</div><div style="font-size:10.5px;color:#8a7260">${w?weatherSummary(w):(S.weatherLoading?'Loading Open-Meteo...':'Open-Meteo not loaded yet')}${S.weatherErr?' · '+S.weatherErr:''}</div></div><button class="btn bgsm" id="refreshWeatherDash">Refresh</button></div></div>`;
-  setTimeout(()=>{const b=document.getElementById('refreshWeatherDash');if(b)b.onclick=()=>updateWeather(true);},0);
-  sec.appendChild(wc);
+  sec.appendChild(renderWeatherCard(data,{title:'Weather'}));
   if (airconCost + tvCost + applianceCost > 0) {
     const acCard = D('card'); acCard.innerHTML = `<div class="cp"><div class="lbl">Electricity Cycle · ${cycleLabel(eCycle)}</div><div class="sf" style="font-size:23px;margin:2px 0">${fmt2(airconCost+tvCost+applianceCost)}</div><div style="font-size:10.5px;color:#8a7260">24/7 ${fmt2(cycleAlwaysOnCost)} · Sessions ${fmt2(applianceSessionCost)} · Aircon ${fmt2(airconCost)} · TV ${fmt2(tvCost)}</div></div>`;
     sec.appendChild(acCard);
   }
-  // Budget slider
-  const sc=D('card');const scp=D('cp');
-  const sr=D('row');sr.style.marginBottom='7px';sr.appendChild(h('span',{cls:'lbl'},'Daily Meals Budget'));const dbVal=h('span',{cls:'sf amber-c',style:'font-size:20px'},fmt(data.dailyBudget));sr.appendChild(dbVal);
-  const sl=h('input',{type:'range',min:150,max:700,step:10,value:data.dailyBudget});
-  sl.oninput=e=>{dbVal.textContent=fmt(e.target.value);};
-  sl.onchange=e=>setD(d=>({...d,dailyBudget:parseInt(e.target.value)}));
-  scp.appendChild(sr);scp.appendChild(sl);
-  const slr=D('row');slr.style.marginTop='3px';slr.innerHTML=`<span style="font-size:10px;color:#8a7260">₱150 min</span><span style="font-size:10px;color:#8a7260">₱700</span>`;
-  scp.appendChild(slr);sc.appendChild(scp);sec.appendChild(sc);
-  const gc=D('card');const gcp=D('cp');
-  const gr=D('row');gr.style.marginBottom='7px';gr.appendChild(h('span',{cls:'lbl'},'Monthly Grocery Budget'));const gbVal=h('span',{cls:'sf amber-c',style:'font-size:20px'},fmt(data.groceryBudget||5000));gr.appendChild(gbVal);
-  const gsl=h('input',{type:'range',min:1000,max:15000,step:500,value:data.groceryBudget||5000});
-  gsl.oninput=e=>{gbVal.textContent=fmt(e.target.value);};
-  gsl.onchange=e=>setD(d=>({...d,groceryBudget:parseInt(e.target.value)}));
-  gcp.appendChild(gr);gcp.appendChild(gsl);
-  const gsr=D('row');gsr.style.marginTop='3px';gsr.innerHTML=`<span style="font-size:10px;color:#8a7260">₱1,000 min</span><span style="font-size:10px;color:#8a7260">₱15,000</span>`;
-  gcp.appendChild(gsr);gc.appendChild(gcp);sec.appendChild(gc);
   // 7-day chart
-  const cc=D('card');const ccp=D('cp');ccp.style.paddingBottom='5px';
+  const cc=D('card');cc.style.cursor='pointer';cc.onclick=()=>set({modal:'mealsMonthChart',chartMonthKey:curMk(),selectedMealDate:toStr()});const ccp=D('cp');ccp.style.paddingBottom='5px';
   const cr=D('row');cr.style.marginBottom='11px';cr.innerHTML=`<span class="lbl">7-Day Meals Spending</span><span style="font-size:11px;color:#8a7260">Avg ${fmt(Math.round(avgD))}/day</span>`;
   const bars=D('bw');
   chart.forEach(cd=>{
@@ -1044,7 +1188,7 @@ function renderDash(){
   });
   ccp.appendChild(cr);ccp.appendChild(bars);ccp.appendChild(Object.assign(D(''),{style:'font-size:10px;color:#8a7260;margin-top:6px',textContent:'🟢 Within budget   🔴 Over budget'}));
   cc.appendChild(ccp);sec.appendChild(cc);
-  const lb=Btn('bp bfull','+ Log Food / Expense',()=>set({modal:'addTx'}));lb.style.marginBottom='4px';sec.appendChild(lb);
+  const lb=Btn('bp bfull','+ Log Food / Expense',()=>set({modal:'addTx',txF:{...S.txF,date:toStr()}}));lb.style.marginBottom='4px';sec.appendChild(lb);
   // Recent (Excluded Aircon from recent deductions list)
   const allTx=[...(data.transactions||[]).slice(0,6).map(t=>({...t,type:'food'})),...(data.homeExpenses||[]).slice(0,4).map(t=>({...t,type:'home'}))].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
   if(allTx.length){
@@ -1059,7 +1203,7 @@ function renderDash(){
       info.appendChild(document.createTextNode((tx.note?' '+tx.note+' ·':'')+' '+new Date(tx.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})));
       left.appendChild(nm);left.appendChild(info);
       const right=D('');right.style.cssText='display:flex;align-items:center;gap:6px';
-      const amt=D('');amt.style.cssText='font-weight:700;color:#b83030;font-size:13px';amt.textContent='-'+fmt(tx.amount);
+      const amt=D('');amt.style.cssText=`font-weight:700;color:${tx.amount?'#b83030':'#8a7260'};font-size:13px`;amt.textContent=tx.amount?'-'+fmt(tx.amount):fmt(0);
       right.appendChild(amt);right.appendChild(h('button',{cls:'del',onClick:()=>tx.type==='food'?delTx(tx.id):delHome(tx.id)},'×'));
       row.appendChild(left);row.appendChild(right);rc.appendChild(row);
     });
@@ -1067,7 +1211,7 @@ function renderDash(){
   }
   // Quick action buttons
   const qa=D('');qa.style.cssText='display:flex;gap:8px;margin-bottom:9px';
-  const q1=Btn('bg bfull','🏠 Log Home',()=>set({modal:'addHome'}));
+  const q1=Btn('bg bfull','🏠 Log Home',()=>set({modal:'addHome',homeF:{...S.homeF,date:toStr()}}));
   const q2=Btn('bg bfull','📊 Reports',()=>set({tab:'reports'}));
   qa.appendChild(q1);qa.appendChild(q2);sec.appendChild(qa);
   // Tips
@@ -1094,7 +1238,7 @@ function renderFood(){
   mw.appendChild(msel);toprow.appendChild(mw);
   const fa=D('');fa.style.cssText='display:flex;gap:6px';
   if(S.multiFood){fa.appendChild(Btn('bgsm','Edit',()=>openBatchEdit('food'),!S.selFood.size));fa.appendChild(Btn('bgsm','Delete',()=>delSelected('food'),!S.selFood.size));fa.appendChild(Btn('bgsm','Done',()=>clearMulti('food')));}
-  else {fa.appendChild(Btn('bgsm','Select',()=>set({multiFood:true,selFood:new Set()})));fa.appendChild(Btn('bgsm','📦 Pantry',()=>set({tab:'stocks'})));fa.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addTx'})));}
+  else {fa.appendChild(Btn('bgsm','Select',()=>set({multiFood:true,selFood:new Set()})));fa.appendChild(Btn('bgsm','📦 Pantry',()=>set({tab:'stocks'})));fa.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addTx',txF:{...S.txF,date:toStr()}})));}
   toprow.appendChild(fa);sec.appendChild(toprow);
   const mTx=data.transactions.filter(t=>mk(t.date)===S.viewMk);
   const mealTx=mTx.filter(t=>!isGroceryTx(t)),groceryTx=mTx.filter(isGroceryTx);
@@ -1147,7 +1291,7 @@ function renderHome(){
   mw.appendChild(msel);toprow.appendChild(mw);
   const ha=D('');ha.style.cssText='display:flex;gap:6px';
   if(S.multiHome){ha.appendChild(Btn('bgsm','Edit',()=>openBatchEdit('home'),!S.selHome.size));ha.appendChild(Btn('bgsm','Delete',()=>delSelected('home'),!S.selHome.size));ha.appendChild(Btn('bgsm','Done',()=>clearMulti('home')));}
-  else {ha.appendChild(Btn('bgsm','Select',()=>set({multiHome:true,selHome:new Set()})));ha.appendChild(Btn('bgsm','📦 Stocks',()=>set({tab:'stocks'})));ha.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addHome'})));}
+  else {ha.appendChild(Btn('bgsm','Select',()=>set({multiHome:true,selHome:new Set()})));ha.appendChild(Btn('bgsm','📦 Stocks',()=>set({tab:'stocks'})));ha.appendChild(Btn('bp bsm','+ Add',()=>set({modal:'addHome',homeF:{...S.homeF,date:toStr()}})));}
   toprow.appendChild(ha);sec.appendChild(toprow);
   const chips=D('chips');['All',...homeCategories()].forEach(cat=>{const c=D('chip'+(S.homeCat===cat?' chip-on':''));c.textContent=cat;c.onclick=()=>set({homeCat:cat});chips.appendChild(c);});sec.appendChild(chips);
   const mExp=expenses.filter(e=>mk(e.date)===S.viewMk);
@@ -1284,7 +1428,7 @@ function renderBills(){
   const toprow=D('row');toprow.style.marginBottom='10px';
   const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
   mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
-  const allM=Array.from({length:7},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-3+i);return mk(d2.toISOString().split('T')[0]);});
+  const allM=Array.from({length:7},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-3+i);return mk(dateOf(d2));});
   const msel=Sel(bm,allM,v=>set({billsMk:v}));
   msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
   [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
@@ -1298,9 +1442,10 @@ function renderBills(){
     const amount=bill.monthlyAmounts[bm]||0;const paid=!!bill.paid[bm];
     const isElectric=String(bill.name||'').toLowerCase().includes('electric');
     const kwh=isElectric?(parseFloat(bill.monthlyKwh?.[bm])||0):0;
-    const billCycle=isElectric?billCycleForMonth(bm,meralcoReadDay(data)):null;
+    const cmp=isElectric&&kwh?electricityComparisonForMonth(bm,data,kwh):null;
+    const billCycle=cmp?.cycle||null;
     const dailyKwh=kwh&&billCycle?kwh/cycleDays(billCycle):0;
-    const est=isElectric&&kwh&&billCycle?electricityCycleEstimate(billCycle,data):null;
+    const est=cmp?.est||null;
     const diff=est?est.totalKwh-kwh:0;
     const logsPct=est&&kwh?est.totalKwh/kwh*100:0;
     const card=D('card');
@@ -1364,7 +1509,7 @@ function renderReports(){
   const mw=D('');mw.style.cssText='display:flex;align-items:center;gap:7px';
   mw.appendChild(h('span',{style:'font-size:11px;font-weight:700;color:#8a7260'},'Month:'));
   const billMonths=(data.bills||[]).flatMap(b=>[...Object.keys(b.monthlyAmounts||{}),...Object.keys(b.monthlyKwh||{})]);
-  const allMonths=[...new Set([...(data.transactions||[]).map(t=>mk(t.date)),...(data.homeExpenses||[]).map(e=>mk(e.date)),...(data.airconUsage||[]).map(e=>mk(e.date)),...(data.tvUsage||[]).map(e=>mk(e.date)),...(data.applianceUsage||[]).map(e=>mk(e.date)),...billMonths,...Array.from({length:3},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-i);return mk(d2.toISOString().split('T')[0]);})])].sort((a,b)=>b.localeCompare(a));
+  const allMonths=[...new Set([...(data.transactions||[]).map(t=>mk(t.date)),...(data.homeExpenses||[]).map(e=>mk(e.date)),...(data.airconUsage||[]).map(e=>mk(e.date)),...(data.tvUsage||[]).map(e=>mk(e.date)),...(data.applianceUsage||[]).map(e=>mk(e.date)),...billMonths,...Array.from({length:3},(_,i)=>{const d2=new Date();d2.setMonth(d2.getMonth()-i);return mk(dateOf(d2));})])].sort((a,b)=>b.localeCompare(a));
   const msel=Sel(rm,allMonths,v=>set({rptMk:v}));
   msel.style.cssText='padding:5px 9px;font-size:12px;border-radius:7px;border:1.5px solid #e2d9ce;background:#fff';
   [...msel.options].forEach(o=>{o.text=mklbl(o.value);});
@@ -1430,8 +1575,8 @@ function renderReports(){
   }
   const eBill=electricityBill(data),actualKwh=parseFloat(eBill?.monthlyKwh?.[rm])||0;
   if(actualKwh){
-    const eCycle=billCycleForMonth(rm,meralcoReadDay(data)),est=electricityCycleEstimate(eCycle,data);
-    const diff=est.totalKwh-actualKwh,logsPct=actualKwh?est.totalKwh/actualKwh*100:0,amount=parseFloat(eBill?.monthlyAmounts?.[rm])||0,eff=amount?amount/actualKwh:0;
+    const cmp=electricityComparisonForMonth(rm,data,actualKwh),eCycle=cmp.cycle,est=cmp.est;
+    const diff=est.totalKwh-actualKwh,logsPct=actualKwh?est.totalKwh/actualKwh*100:0,amount=parseFloat(eBill?.monthlyAmounts?.[rm])||0,eff=amount?amount/actualKwh:0,untracked=Math.max(0,actualKwh-est.totalKwh);
     const ec=D('card');ec.appendChild(Object.assign(D(''),{style:'padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Electricity Bill Comparison</span>'}));
     const ep=D('cp');
     const actualBox=D('');
@@ -1448,16 +1593,18 @@ function renderReports(){
     if(eff)tiles.push({label:'Rate',value:`${fmt2(eff)}/kWh`});
     ep.appendChild(metricTiles(tiles));
     ep.appendChild(h('div',{cls:'lbl',style:'margin-top:10px'},'Estimate Breakdown'));
-    ep.appendChild(metricTiles([
+    const breakdown=[
       {label:'Aircon',value:`${est.airconKwh.toFixed(2)} kWh`,color:'#b8720c'},
       {label:'TV',value:`${est.tvKwh.toFixed(2)} kWh`,color:'#2e6e4f'},
       {label:'24/7',value:`${est.alwaysKwh.toFixed(2)} kWh`,color:'#1a56c4'},
       {label:'Sessions',value:`${est.sessionKwh.toFixed(2)} kWh`,color:'#6b4c36'}
-    ]));
+    ];
+    if(untracked>0)breakdown.push({label:'Untracked',value:`${untracked.toFixed(2)} kWh`,color:'#b83030'});
+    ep.appendChild(metricTiles(breakdown));
     ec.appendChild(ep);sec.appendChild(ec);
   }
   // Top expenses
-  const allEx=[...foodTx.map(t=>({name:t.source+(t.note?' — '+t.note:''),amount:t.amount,date:t.date,type:'food'})),...homeEx.map(e=>({name:e.name,amount:e.amount,date:e.date,type:'home'})),...airconUsage.map(u=>({name:'Aircon ('+u.hours+' hrs)',amount:u.cost,date:u.date,type:'aircon'})),...tvUsage.map(u=>({name:'TV ('+u.hours+' hrs)',amount:u.cost,date:u.date,type:'aircon'})),...applianceUsage.map(u=>({name:u.name+' ('+u.minutes+' mins)',amount:u.cost,date:u.date,type:'aircon'})),...appliances.filter(a=>a.alwaysOn).map(a=>({name:a.name+' (24/7)',amount:applianceMonthly(a,data.meralcoRate).cost,date:`${rm}-01`,type:'aircon'}))].sort((a,b)=>b.amount-a.amount).slice(0,10);
+  const allEx=[...foodTx.filter(t=>t.amount>0).map(t=>({name:t.source+(t.note?' — '+t.note:''),amount:t.amount,date:t.date,type:'food'})),...homeEx.map(e=>({name:e.name,amount:e.amount,date:e.date,type:'home'})),...airconUsage.map(u=>({name:'Aircon ('+durationLabel(u.minutes||(u.hours||0)*60)+')',amount:u.cost,date:u.date,type:'aircon'})),...tvUsage.map(u=>({name:'TV ('+durationLabel(u.minutes||(u.hours||0)*60)+')',amount:u.cost,date:u.date,type:'tv'})),...applianceUsage.map(u=>({name:u.name+' ('+durationLabel(u.minutes)+')',amount:u.cost,date:u.date,type:'appliance',badge:u.category||'Appliance'})),...appliances.filter(a=>a.alwaysOn).map(a=>({name:a.name+' (24/7)',amount:applianceMonthly(a,data.meralcoRate).cost,date:`${rm}-01`,type:'appliance',badge:a.category||'Appliance'}))].sort((a,b)=>b.amount-a.amount).slice(0,10);
   if(allEx.length){
     const ec=D('card');ec.style.marginBottom='18px';
     ec.appendChild(Object.assign(D(''),{style:'padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce',innerHTML:'<span class="lbl">Top 10 Expenses This Month</span>'}));
@@ -1466,8 +1613,9 @@ function renderReports(){
       const left=D('');
       left.appendChild(h('div',{style:'font-size:12px;font-weight:600'},e.name));
       const info=D('');info.style.cssText='font-size:10px;color:#8a7260;margin-top:1px;display:flex;gap:5px;align-items:center';
-      const bcls=e.type==='food'?'bdg-f':e.type==='home'?'bdg-h':'bdg-a';
-      info.appendChild(Sp('bdg '+bcls,e.type==='food'?'Food':e.type==='home'?'Home':'Aircon'));
+      const bcls=e.type==='food'?'bdg-f':e.type==='home'?'bdg-h':e.type==='tv'?'bdg-tv':e.type==='appliance'?'bdg-ap':'bdg-a';
+      const blbl=e.type==='food'?'Food':e.type==='home'?'Home':e.type==='tv'?'TV':e.type==='appliance'?e.badge||'Appliance':'Aircon';
+      info.appendChild(Sp('bdg '+bcls,blbl));
       info.appendChild(document.createTextNode(new Date(e.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})));
       left.appendChild(info);
       row.appendChild(left);row.appendChild(h('span',{cls:'sf',style:'font-size:15px'},fmt(e.amount)));
@@ -1475,7 +1623,7 @@ function renderReports(){
     });
     sec.appendChild(ec);
   }
-  if(!sortedCats.length){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">📊</div><div>No expenses logged for this month yet.</div>';sec.appendChild(e);}
+  if(!sortedCats.length&&!pantry.count){const e=D('card empty');e.innerHTML='<div style="font-size:34px;margin-bottom:7px">📊</div><div>No expenses logged for this month yet.</div>';sec.appendChild(e);}
   return sec;
 }
 
@@ -1484,7 +1632,9 @@ function renderStocks(){
   const data=S.data,stocks=data.stocks||[];const sec=D('sec');
   const toprow=D('row');toprow.style.marginBottom='10px';
   toprow.appendChild(h('span',{style:'font-size:14px;font-weight:700;color:#3a2818'},'Pantry & Stocks'));
-  toprow.appendChild(Btn('bp bsm','+ Item',()=>set({modal:'addStock'})));sec.appendChild(toprow);
+  const acts=D('');acts.style.cssText='display:flex;gap:6px';
+  acts.appendChild(Btn('bp bsm','+ Item',()=>set({modal:'addStock'})));
+  toprow.appendChild(acts);sec.appendChild(toprow);
   // Status chips
   const chips=D('chips');
   ['All','Low Stock','Out of Stock'].forEach(s=>{const c=D('chip'+(S.stockStatus===s?' chip-on':''));c.textContent=s==='All'?'All':s==='Low Stock'?'⚠️ Low':'❌ Out';c.onclick=()=>set({stockStatus:s});chips.appendChild(c);});
@@ -1535,6 +1685,80 @@ function renderStocks(){
 }
 
 // ─── ELECTRICITY TAB ─────────────────────────────────────────
+function renderMeterAudit(){
+  const data=S.data,f=S.auditF,a=meterAudit(data,f),card=D('card');
+  const hdr=D('row');
+  hdr.style.cssText='padding:8px 13px;background:#faf6f1;border-bottom:1px solid #e2d9ce;cursor:pointer;gap:8px';
+  const left=D('');left.style.cssText='flex:1;min-width:0';
+  left.appendChild(h('span',{style:'font-weight:700;font-size:13px'},'Meter Audit'));
+  if(a.valid){
+    const sub=h('div',{style:'font-size:10px;color:#8a7260;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},`${a.meterKwh.toFixed(2)} kWh meter · ${a.meterKwh?Math.round(a.matchPct)+'% matched · ':''}${a.gap>=0?'+':''}${a.gap.toFixed(2)} kWh gap`);
+    left.appendChild(sub);
+  }
+  hdr.appendChild(left);
+  hdr.appendChild(h('span',{style:'font-size:16px;color:#8a7260;flex-shrink:0'},S.auditOpen?'▴':'▾'));
+  hdr.onclick=()=>set({auditOpen:!S.auditOpen});
+  card.appendChild(hdr);
+  if(!S.auditOpen)return card;
+  const cp=D('cp');
+  const grid=D('g2');grid.style.marginBottom='8px';
+  const addField=(label,key,type='text',step='')=>{
+    const input=Inp('',{type,value:f[key]||'',...(step?{step}:{})});
+    input.oninput=e=>S.auditF[key]=e.target.value;
+    grid.appendChild(Fg(label,input));
+  };
+  addField('Start Date','startDate','date');addField('Start Time','startTime','time');
+  addField('Start Reading','startRead','number','0.001');addField('End Reading','endRead','number','0.001');
+  addField('End Date','endDate','date');addField('End Time','endTime','time');
+  cp.appendChild(grid);
+  const run=Btn('bgfull','Run Audit',()=>set({auditF:{...S.auditF}}));run.style.marginBottom='8px';cp.appendChild(run);
+  if(!a.valid){
+    cp.appendChild(h('div',{style:'font-size:11px;color:#8a7260;line-height:1.5'},a.error));
+    card.appendChild(cp);return card;
+  }
+  const closeGap=a.meterKwh?Math.abs(a.gap)<=Math.max(1,a.meterKwh*0.1):false;
+  const gapColor=closeGap?'#2e6e4f':a.gap>0?'#b8720c':'#8b2d2d';
+  cp.appendChild(metricTiles([
+    {label:'Meter',value:`${a.meterKwh.toFixed(2)} kWh`,color:'#3a2818'},
+    {label:'App Est.',value:`${a.estimatedKwh.toFixed(2)} kWh`,color:'#1a56c4'},
+    {label:'Matched',value:a.meterKwh?`${Math.round(a.matchPct)}%`:'--',color:closeGap?'#2e6e4f':gapColor},
+    {label:'Gap',value:`${a.gap>=0?'+':''}${a.gap.toFixed(2)} kWh`,color:gapColor}
+  ],true));
+  cp.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260;line-height:1.5;margin-top:7px'},`${durationLabel(a.hours*60)} window · ${a.meterKwh?Math.round(a.matchPct)+'% matched · ':''}Sessions ${a.loggedKwh.toFixed(2)} kWh · 24/7 ${a.alwaysKwh.toFixed(2)} kWh · ${fmt2(a.estimatedKwh*a.rate)} estimated. Positive gap means meter used more than logged.`));
+  const parts=D('g2');parts.style.marginTop='8px';
+  [
+    ['Aircon',a.airconKwh,a.aircon.length],
+    ['TV',a.tvKwh,a.tv.length],
+    ['Sessions',a.sessionKwh,a.appliances.length],
+    ['24/7',a.alwaysKwh,a.alwaysRows.length]
+  ].forEach(([label,kwh,count])=>{
+    const box=D('');box.style.cssText='background:#faf6f1;border:1px solid #e2d9ce;border-radius:8px;padding:7px';
+    box.appendChild(h('div',{cls:'lbl'},label));
+    box.appendChild(h('div',{cls:'sf',style:'font-size:15px;margin-top:1px'},`${kwh.toFixed(3)} kWh`));
+    box.appendChild(h('div',{style:'font-size:9.5px;color:#8a7260'},`${count} item${count!==1?'s':''}`));
+    parts.appendChild(box);
+  });
+  cp.appendChild(parts);
+  const rows=[
+    ...a.aircon.map(u=>({type:'Aircon',name:`${airconModeLabel(u.mode,u.sleepMode)} · ${durationLabel(u.minutes||(u.hours||0)*60)}`,date:u.date,time:u.start&&u.end?`${fmtTime12(u.start)}-${fmtTime12(u.end)}`:'date only',kwh:u.kwh})),
+    ...a.tv.map(u=>({type:'TV',name:durationLabel(u.minutes||(u.hours||0)*60),date:u.date,time:u.start&&u.end?`${fmtTime12(u.start)}-${fmtTime12(u.end)}`:'date only',kwh:u.kwh})),
+    ...a.appliances.map(u=>({type:'Appliance',name:`${u.name} · ${durationLabel(u.minutes)}`,date:u.date,time:u.start&&u.end?`${fmtTime12(u.start)}-${fmtTime12(u.end)}`:'date only',kwh:u.kwh})),
+    ...a.alwaysRows.map(u=>({type:'24/7',name:u.name,date:'whole window',time:`${parseFloat(u.watts)||0}W x ${parseFloat(u.qty)||1}`,kwh:u.kwh}))
+  ].sort((x,y)=>String(x.date).localeCompare(String(y.date))||String(x.time).localeCompare(String(y.time)));
+  const list=D('');list.style.marginTop='8px';
+  rows.forEach(r=>{
+    const row=D('row');row.style.cssText='border-top:1px solid #e2d9ce;padding:7px 0;gap:8px;align-items:flex-start';
+    const left=D('');left.style.cssText='flex:1;min-width:0';
+    left.appendChild(h('div',{style:'font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},`${r.type} · ${r.name}`));
+    left.appendChild(h('div',{style:'font-size:10px;color:#8a7260'},`${r.date} · ${r.time}`));
+    row.appendChild(left);
+    row.appendChild(h('div',{cls:'sf',style:'font-size:13px;flex-shrink:0'},`${(parseFloat(r.kwh)||0).toFixed(3)} kWh`));
+    list.appendChild(row);
+  });
+  if(rows.length)cp.appendChild(list);
+  card.appendChild(cp);
+  return card;
+}
 function renderAircon(){
   const data=S.data,sec=D('sec');
   const rates=airconRates(data);
@@ -1564,20 +1788,7 @@ function renderAircon(){
   const estimatedCycleKwh=airconKwh+tvKwh+applianceKwh;
   const displayCycleKwh=meralcoCycleKwh||estimatedCycleKwh;
   const meralcoDailyKwh=meralcoCycleKwh?meralcoCycleKwh/cycleDays(selectedCycle):0;
-  const dailyAlwaysOnCost=alwaysOnMonthlyCost/30,dailyAlwaysOnKwh=alwaysOnMonthlyKwh/30;
-  const eChart=Array.from({length:7},(_,i)=>{
-    const dd=new Date();dd.setDate(dd.getDate()-(6-i));
-    const ds=dd.toISOString().split('T')[0];
-    const air=usage.filter(u=>u.date===ds);
-    const tv=tvUsage.filter(u=>u.date===ds);
-    const ap=applianceUsage.filter(u=>u.date===ds);
-    const airCost=air.reduce((s,u)=>s+u.cost,0),tvCost=tv.reduce((s,u)=>s+u.cost,0);
-    const apCost=ap.reduce((s,u)=>s+u.cost,0);
-    const airKwh=air.reduce((s,u)=>s+u.kwh,0),tvKwh=tv.reduce((s,u)=>s+u.kwh,0);
-    const apKwh=ap.reduce((s,u)=>s+u.kwh,0);
-    const estKwh=airKwh+tvKwh+apKwh+dailyAlwaysOnKwh;
-    return{label:chartLbl(dd),ds,cost:airCost+tvCost+apCost+dailyAlwaysOnCost,kwh:meralcoDailyKwh||estKwh,estimatedKwh:estKwh,meralcoDailyKwh,airCost,tvCost,applianceCost:apCost+dailyAlwaysOnCost,airKwh,tvKwh,applianceKwh:apKwh+dailyAlwaysOnKwh};
-  });
+  const eChart=electricityDailyChart(selectedCycle,data,'7');
   const maxECost=Math.max(...eChart.map(x=>x.cost),1);
 
   const toprow=D('row');toprow.style.marginBottom='10px';
@@ -1592,18 +1803,10 @@ function renderAircon(){
   toprow.appendChild(topActs);
   sec.appendChild(toprow);
 
-  const hero=D('card cg');hero.innerHTML=`<div class="cp"><div class="lblw">${cycleLabel(selectedCycle)} Est. Electricity</div><div class="sf" style="font-size:32px;color:#fff;margin:2px 0">${fmt2(mCost+tvCost+applianceCost)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">Total ${displayCycleKwh.toFixed(2)} kWh${meralcoCycleKwh?' Meralco':' estimated'} · Read day ${readDay} · 24/7 ${fmt2(alwaysOnCost)} · Sessions ${fmt2(applianceSessionCost)} · Aircon ${mHours.toFixed(1)}h · TV ${tvHours.toFixed(1)}h</div></div>`;
+  const hero=D('card cg');hero.innerHTML=`<div class="cp"><div class="lblw">${cycleLabel(selectedCycle)} Est. Electricity</div><div class="sf" style="font-size:32px;color:#fff;margin:2px 0">${fmt2(mCost+tvCost+applianceCost)}</div><div style="font-size:11px;color:rgba(255,255,255,.55)">Total ${displayCycleKwh.toFixed(2)} kWh${meralcoCycleKwh?' Meralco':' estimated'} · Read day ${readDay} · 24/7 ${fmt2(alwaysOnCost)} · Sessions ${fmt2(applianceSessionCost)} · Aircon ${durationLabel(mHours*60)} · TV ${durationLabel(tvHours*60)}</div></div>`;
   sec.appendChild(hero);
 
-  const weatherCard=D('card');
-  const weatherBody=D('cp');
-  const wr=D('row');wr.style.cssText='gap:9px';
-  const wl=D('');wl.style.cssText='flex:1;min-width:0';
-  wl.appendChild(h('div',{cls:'lbl'},`Outdoor Weather · ${weatherSettings(data).label}`));
-  wl.appendChild(h('div',{cls:'sf',style:'font-size:22px;margin:2px 0'},data.weather?.temp!=null?`${Number(data.weather.temp).toFixed(1)}C`:'--'));
-  wl.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},data.weather?weatherSummary(data.weather):(S.weatherLoading?'Loading Open-Meteo...':'Open-Meteo not loaded yet')));
-  const wb=Btn('bgsm','Refresh',()=>updateWeather(true));wb.style.flexShrink='0';
-  wr.appendChild(wl);wr.appendChild(wb);weatherBody.appendChild(wr);weatherCard.appendChild(weatherBody);sec.appendChild(weatherCard);
+  sec.appendChild(renderWeatherCard(data,{title:'Outdoor Weather'}));
 
   const stats=D('g2');stats.style.marginBottom='9px';
   const s1=D('card');s1.innerHTML=`<div class="cp"><div class="lbl">Always On</div><div class="sf" style="font-size:21px;margin:2px 0">${fmt2(alwaysOnCost)}</div><div style="font-size:10.5px;color:#8a7260">${alwaysOnKwh.toFixed(3)} kWh/cycle</div></div>`;
@@ -1612,6 +1815,7 @@ function renderAircon(){
 
   const kwhCard=D('card');kwhCard.innerHTML=`<div class="cp"><div class="lbl">Total kWh This Cycle</div><div class="sf" style="font-size:24px;margin:2px 0">${displayCycleKwh.toFixed(2)} kWh</div><div style="font-size:10.5px;color:#8a7260">${meralcoCycleKwh?'From Meralco bill input':'Estimated from logs'} · Aircon ${airconKwh.toFixed(2)} · TV ${tvKwh.toFixed(2)} · Appliances ${applianceKwh.toFixed(2)}</div></div>`;
   sec.appendChild(kwhCard);
+  sec.appendChild(renderMeterAudit());
 
   let alwaysCard=null;
   if(alwaysOn.length){
@@ -1631,7 +1835,7 @@ function renderAircon(){
     });
   }
 
-  const cc=D('card');const ccp=D('cp');ccp.style.paddingBottom='5px';
+  const cc=D('card');cc.style.cursor='pointer';cc.onclick=()=>set({modal:'electricityMonthChart',chartCycleKey:selectedCycle.key});const ccp=D('cp');ccp.style.paddingBottom='5px';
   const cr=D('row');cr.style.marginBottom='11px';
   const wkCost=eChart.reduce((s,x)=>s+x.cost,0),wkKwh=eChart.reduce((s,x)=>s+x.kwh,0);
   cr.innerHTML=`<span class="lbl">7-Day Electricity</span><span style="font-size:11px;color:#8a7260">${fmt2(wkCost)} · ${wkKwh.toFixed(2)} kWh${meralcoDailyKwh?' · '+meralcoDailyKwh.toFixed(2)+'/day bill avg':''}</span>`;
@@ -1667,7 +1871,7 @@ function renderAircon(){
       const inner=D('row cr');inner.style.cssText='border-bottom:1px solid #e2d9ce;gap:9px';
       const left=D('');left.style.cssText='flex:1;min-width:0';
       left.appendChild(h('div',{style:'font-size:12.5px;font-weight:700'},s.name));
-      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${s.type==='aircon'?'Aircon · '+airconModeLabel(s.mode,s.sleepMode):s.type==='tv'?'TV':'Appliance'} · on since ${fmtTime12(timeOf(new Date(s.startedAt)))} · ${est.minutes} mins${s.outdoorTemp!==''&&s.outdoorTemp!=null?' · out '+s.outdoorTemp+'C':''}`));
+      left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${s.type==='aircon'?'Aircon · '+airconModeLabel(s.mode,s.sleepMode):s.type==='tv'?'TV':'Appliance'} · on since ${fmtTime12(timeOf(new Date(s.startedAt)))} · ${durationLabel(est.minutes)}${s.outdoorTemp!==''&&s.outdoorTemp!=null?' · out '+s.outdoorTemp+'C':''}`));
       const right=D('');right.style.cssText='text-align:right;flex-shrink:0';
       right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},`${est.kwh.toFixed(3)} kWh`));
       right.appendChild(h('div',{style:'font-size:10px;color:#8a7260'},fmt2(est.cost)));
@@ -1682,17 +1886,17 @@ function renderAircon(){
 
   const defaultMode=airconModeFrom(data.airconDefaultMode,data.airconDefaultSleepMode);
   const ap=airconProfile(data);
-  const spec=D('card');spec.innerHTML=`<div class="cp"><div class="lbl">${ap.model} Estimate</div><div style="font-size:12px;color:#3a2818;line-height:1.6;margin-top:5px">Rated around <b>${ap.ratedWatts}W</b> with ${ap.minWatts}-${ap.maxWatts}W inverter range, CSPF <b>${ap.cspf}</b>, DOE <b>${ap.doeMonthlyKwh} kWh/month</b>. Startup now tapers for the first 60 mins from <b>${rates.startup} kWh/hr</b> into the selected mode. Sleep <b>${rates.sleepDay}/${rates.sleepNight}</b>, Eco <b>${rates.ecoDay}/${rates.ecoNight}</b>, Normal <b>${rates.day}/${rates.night}</b> day/night kWh/hr. Set temp adjusts by <b>${data.airconTempStepPct||7}%/C</b>; outdoor by <b>${data.airconOutdoorStepPct||2.5}%/C</b>.</div></div>`;
+  const spec=D('card');spec.innerHTML=`<div class="cp"><div class="lbl">${ap.model} Estimate</div><div style="font-size:12px;color:#3a2818;line-height:1.6;margin-top:5px">Rated around <b>${ap.ratedWatts}W</b> with ${ap.minWatts}-${ap.maxWatts}W inverter range, CSPF <b>${ap.cspf}</b>, DOE <b>${ap.doeMonthlyKwh} kWh/month</b>. Startup now tapers for the first ${durationLabel(60)} from <b>${rates.startup} kWh/hr</b> into the selected mode. Sleep <b>${rates.sleepDay}/${rates.sleepNight}</b>, Eco <b>${rates.ecoDay}/${rates.ecoNight}</b>, Normal <b>${rates.day}/${rates.night}</b> day/night kWh/hr. Set temp adjusts by <b>${data.airconTempStepPct||7}%/C</b>; outdoor by <b>${data.airconOutdoorStepPct||2.5}%/C</b>.</div></div>`;
   sec.appendChild(spec);
 
   const actions=D('');actions.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px';
-  actions.appendChild(Btn('bgfull','+ Aircon Session',()=>{const mode=airconModeFrom(data.airconDefaultMode,data.airconDefaultSleepMode),w=data.weather||{};set({modal:'addAircon',airconF:{...S.airconF,date:toStr(),mode,sleepMode:mode==='sleep',tempC:data.airconDefaultTemp||S.airconF.tempC||'29',roomTemp:S.airconF.roomTemp||'',outdoorTemp:w.temp??S.airconF.outdoorTemp??'',outdoorFeels:w.apparent??S.airconF.outdoorFeels??'',outdoorHumidity:w.humidity??S.airconF.outdoorHumidity??''}});}));
+  actions.appendChild(Btn('bgfull','+ Aircon Session',()=>{const mode=airconModeFrom(data.airconDefaultMode,data.airconDefaultSleepMode),w=data.weather||{};set({modal:'addAircon',airconF:{...timedSessionDraft(S.airconF,480),mode,sleepMode:mode==='sleep',tempC:data.airconDefaultTemp||S.airconF.tempC||'29',roomTemp:S.airconF.roomTemp||'',outdoorTemp:w.temp??S.airconF.outdoorTemp??'',outdoorFeels:w.apparent??S.airconF.outdoorFeels??'',outdoorHumidity:w.humidity??S.airconF.outdoorHumidity??''}});}));
   actions.appendChild(Btn('bgfull','Start Aircon',()=>startActiveSession('aircon')));
-  actions.appendChild(Btn('bgfull','+ TV Hours',()=>set({modal:'addTv'})));
+  actions.appendChild(Btn('bgfull','+ TV Hours',()=>set({modal:'addTv',tvF:timedSessionDraft(S.tvF,180)})));
   actions.appendChild(Btn('bgfull','Start TV',()=>startActiveSession('tv')));
   actions.appendChild(Btn('bgfull','+ Appliance Session',()=>{
     const first=(data.appliances||[]).find(a=>!a.alwaysOn);
-    set({modal:'logAppliance',applianceSessionF:{applianceId:first?.id||'',date:toStr(),minutes:first?.sessionMinutes?String(first.sessionMinutes):''}});
+    set({modal:'logAppliance',applianceSessionF:applianceSessionDraft(first)});
   }));
   actions.appendChild(Btn('bgfull','Manage Appliances',()=>set({tab:'appliances'})));
   sec.appendChild(actions);
@@ -1706,7 +1910,7 @@ function renderAircon(){
   mUsage.forEach(u=>{
     const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
     const left=D('');
-    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`Aircon · ${u.hours} hours · ${airconModeLabel(u.mode,u.sleepMode)}${u.tempC!==''&&u.tempC!=null?' · set '+u.tempC+'C':''}${u.roomTemp!==''&&u.roomTemp!=null?' · room '+u.roomTemp+'C':''}`));
+    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`Aircon · ${durationLabel(u.minutes||(u.hours||0)*60)} · ${airconModeLabel(u.mode,u.sleepMode)}${u.tempC!==''&&u.tempC!=null?' · set '+u.tempC+'C':''}${u.roomTemp!==''&&u.roomTemp!=null?' · room '+u.roomTemp+'C':''}`));
     left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}${u.start&&u.end?' · '+fmtTime12(u.start)+'-'+fmtTime12(u.end):''} · ${u.kwh.toFixed(2)} kWh${u.outdoorTemp!==''&&u.outdoorTemp!=null?' · out '+u.outdoorTemp+'C':''}`));
     const right=D('');right.style.cssText='text-align:right';
     right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},fmt2(u.cost)));
@@ -1721,7 +1925,7 @@ function renderAircon(){
   mTv.forEach(u=>{
     const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
     const left=D('');
-    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`TV · ${u.hours} hours`));
+    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`TV · ${durationLabel(u.minutes||(u.hours||0)*60)}`));
     left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}${u.start&&u.end?' · '+fmtTime12(u.start)+'-'+fmtTime12(u.end):''} · ${u.watts}W · ${u.kwh.toFixed(2)} kWh`));
     const right=D('');right.style.cssText='text-align:right';
     right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},fmt2(u.cost)));
@@ -1736,8 +1940,8 @@ function renderAircon(){
   mApplianceUsage.forEach(u=>{
     const inner=D('row cr');inner.style.borderBottom='1px solid #e2d9ce';
     const left=D('');
-    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`${u.name} · ${u.minutes} mins`));
-    left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})} · ${u.qty}x ${u.watts}W · ${u.kwh.toFixed(3)} kWh`));
+    left.appendChild(h('div',{style:'font-size:13px;font-weight:600'},`${u.name} · ${durationLabel(u.minutes)}`));
+    left.appendChild(h('div',{style:'font-size:10.5px;color:#8a7260'},`${new Date(u.date+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}${u.start&&u.end?' · '+fmtTime12(u.start)+'-'+fmtTime12(u.end):''} · ${u.qty}x ${u.watts}W · ${u.kwh.toFixed(3)} kWh`));
     const right=D('');right.style.cssText='text-align:right';
     right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},fmt2(u.cost)));
     right.appendChild(h('div',{style:'font-size:9px;color:#8a7260'},`@${u.rateAtTime}/kWh`));
@@ -1768,7 +1972,7 @@ function renderAppliances(){
 
   const quick=D('');quick.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px';
   const first=session[0];
-  quick.appendChild(Btn('bgfull','Log Session',()=>set({modal:'logAppliance',applianceSessionF:{applianceId:first?.id||'',date:toStr(),minutes:first?.sessionMinutes?String(first.sessionMinutes):''}}),!first));
+  quick.appendChild(Btn('bgfull','Log Session',()=>set({modal:'logAppliance',applianceSessionF:applianceSessionDraft(first)}),!first));
   quick.appendChild(Btn('bgfull','Electricity Overview',()=>set({tab:'aircon'})));
   sec.appendChild(quick);
 
@@ -1812,7 +2016,7 @@ function renderAppliances(){
       if(a.note)left.appendChild(h('div',{style:'font-size:10px;color:#8a7260;font-style:italic'},a.note));
       const right=D('');right.style.cssText='text-align:right;flex-shrink:0';
       right.appendChild(h('div',{cls:'sf',style:'font-size:15px'},fmt2(est.cost)));
-      right.appendChild(h('button',{cls:'btn bsm',style:'margin-top:4px',onClick:()=>set({modal:'logAppliance',applianceSessionF:{applianceId:a.id,date:toStr(),minutes:String(a.sessionMinutes||60)}})},'Log'));
+      right.appendChild(h('button',{cls:'btn bsm',style:'margin-top:4px',onClick:()=>set({modal:'logAppliance',applianceSessionF:applianceSessionDraft(a)})},'Log'));
       right.appendChild(h('button',{cls:'btn bgsm',style:'margin-top:4px;margin-left:4px',onClick:()=>startActiveSession('appliance',{applianceId:a.id})},'Start'));
       inner.appendChild(left);inner.appendChild(right);
       sessionCard.appendChild(swRow(inner,()=>openEdit('appliance',a.id),()=>delAppliance(a.id)));
@@ -1824,20 +2028,169 @@ function renderAppliances(){
   return sec;
 }
 
+// ─── LISTS & DEFAULTS PAGE ──────────────────────────────────
+function renderListsDefaults(){
+  const data=S.data,sec=D('sec');
+  if(!S.listsF||!S.listsF.foodSources){
+    S.listsF={
+      foodSources:foodSources(data).join('\n'),
+      homeCategories:homeCategories(data).join('\n'),
+      homeStores:homeStores(data).join('\n'),
+      applianceCategories:applianceCategories(data).join('\n'),
+      dailyBudget:String(data.dailyBudget||380),
+      groceryBudget:String(data.groceryBudget||5000)
+    };
+  }
+  const f=S.listsF;
+  const hero=D('card cg');hero.innerHTML=`<div class="cp"><div class="lblw">Lists & Defaults</div><div class="sf" style="font-size:26px;color:#fff;margin:3px 0">Personalize Your Tracker</div><div style="font-size:11px;color:rgba(255,255,255,.58);line-height:1.45">Budgets, food sources, home categories, stores, and appliance categories used across forms and reports.</div></div>`;
+  sec.appendChild(hero);
+
+  const budgetBox=(label,key,min,max,step)=>{
+    const box=D('card');box.style.marginBottom='0';box.appendChild(DivHdr(label));const cp=D('cp');const row=D('row');row.style.marginBottom='7px';
+    const val=h('span',{cls:'sf amber-c',style:'font-size:18px'},fmt(f[key]||0));
+    row.appendChild(h('span',{cls:'lbl'},'Default'));row.appendChild(val);cp.appendChild(row);
+    const slider=h('input',{type:'range',min,max,step,value:f[key]});
+    slider.oninput=e=>{f[key]=e.target.value;val.textContent=fmt(e.target.value);};
+    cp.appendChild(slider);
+    const range=D('row');range.style.marginTop='3px';range.innerHTML=`<span style="font-size:10px;color:#8a7260">${fmt(min)} min</span><span style="font-size:10px;color:#8a7260">${fmt(max)}</span>`;
+    cp.appendChild(range);box.appendChild(cp);return box;
+  };
+  const budgetGrid=D('');budgetGrid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:9px';
+  budgetGrid.appendChild(budgetBox('Daily Meals Budget','dailyBudget',150,700,10));
+  budgetGrid.appendChild(budgetBox('Groceries Budget','groceryBudget',1000,15000,500));
+  sec.appendChild(budgetGrid);
+
+  const ta=(key,label,sub)=>{
+    const card=D('card');card.appendChild(DivHdr(label));
+    const cp=D('cp');
+    if(sub)cp.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:9px'},sub));
+    const el=h('textarea',{cls:'inp',rows:'6',style:'resize:vertical;line-height:1.45;min-height:118px',value:f[key]||''});
+    el.value=f[key]||'';el.oninput=e=>f[key]=e.target.value;cp.appendChild(el);
+    cp.appendChild(h('div',{style:'font-size:10px;color:#8a7260;margin-top:6px'},'One label per line.'));
+    card.appendChild(cp);sec.appendChild(card);
+  };
+  ta('foodSources','Food Sources','Keep Groceries if you want food entries to add pantry stock.');
+  ta('homeCategories','Home Categories','Used by home expenses, price scans, and reports.');
+  ta('homeStores','Home Stores','Reusable store choices for home items and prices.');
+  ta('applianceCategories','Appliance Categories','Used in Appliance Manager and report badges.');
+
+  const save=Btn('bp bfull','Save Lists & Defaults',saveListsDefaults);save.style.marginBottom='18px';sec.appendChild(save);
+  return sec;
+}
+
 // ─── MODALS ──────────────────────────────────────────────────
 function renderModal(){
   if(!S.modal)return null;
   const bg=D('mbg');bg.onclick=e=>{if(e.target===bg)set({modal:null});};
   const box=D('mbox');
   const M=(t,c)=>{const tt=D('mt');tt.textContent=t;box.appendChild(tt);box.appendChild(c);bg.appendChild(box);return bg;};
+  if(S.modal==='mealsMonthChart'){
+    const monthKey=S.chartMonthKey||curMk(),data=S.data,chart=mealsDailyChart(monthKey,data),maxSpend=Math.max(...chart.map(x=>x.spend),data.dailyBudget||1,1);
+    const total=chart.reduce((s,x)=>s+x.spend,0),mealCount=chart.reduce((s,x)=>s+x.count,0),avg=total/chart.length,overDays=chart.filter(x=>x.over).length;
+    if(!S.selectedMealDate||mk(S.selectedMealDate)!==monthKey)S.selectedMealDate=chart.find(x=>x.count)?.ds||`${monthKey}-01`;
+    const selectedDay=chart.find(x=>x.ds===S.selectedMealDate)||chart[0],selectedItems=selectedDay?.items||[];
+    const c=D('');
+    const nav=D('row');nav.style.cssText='gap:8px;margin-bottom:9px';
+    const prev=Btn('bgsm','<',()=>set({chartMonthKey:shiftMonthKey(monthKey,-1)}));prev.style.width='36px';
+    const next=Btn('bgsm','>',()=>set({chartMonthKey:shiftMonthKey(monthKey,1)}));next.style.width='36px';
+    nav.appendChild(prev);nav.appendChild(h('div',{cls:'sf',style:'font-size:16px;flex:1;text-align:center;color:#3a2818'},mklbl(monthKey)));nav.appendChild(next);c.appendChild(nav);
+    c.appendChild(h('div',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},`${mklbl(monthKey)} · ${mealCount} meal log${mealCount!==1?'s':''} · ${fmt(total)} spent · Avg ${fmt(Math.round(avg))}/day · ${overDays} over-budget day${overDays!==1?'s':''}`));
+    const cal=D('');cal.style.cssText='display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:10px';
+    ['S','M','T','W','T','F','S'].forEach(d=>cal.appendChild(h('div',{style:'font-size:9px;color:#8a7260;font-weight:800;text-align:center;padding-bottom:2px'},d)));
+    const padStart=chart[0]?.date.getDay()||0,padEnd=(7-((padStart+chart.length)%7))%7;
+    for(let i=0;i<padStart;i++){const blank=D('');blank.style.cssText='min-height:64px;border-radius:7px;background:#faf6f1;border:1px solid transparent';cal.appendChild(blank);}
+    chart.forEach(cd=>{
+      const isT=cd.ds===toStr(),isSel=cd.ds===S.selectedMealDate,intensity=Math.min(1,cd.spend/maxSpend),cell=D('');
+      cell.style.cssText=`min-height:64px;border:1.5px solid ${isSel?'#1b4d35':isT?'#b8720c':cd.over?'#f5c2c2':'#e2d9ce'};background:${cd.count?cd.over?`rgba(184,48,48,${0.05+intensity*.12})`:`rgba(27,77,53,${0.04+Math.max(intensity,.25)*.1})`:'#fff'};border-radius:7px;padding:5px 4px;display:flex;flex-direction:column;gap:3px;overflow:hidden;cursor:pointer`;
+      cell.onclick=()=>set({selectedMealDate:cd.ds});
+      const top=D('row');top.style.cssText='align-items:flex-start;gap:2px';
+      top.appendChild(h('span',{style:`font-size:11px;font-weight:800;color:${isT?'#1b4d35':cd.over?'#b83030':'#3a2818'}`},cd.label));
+      cell.appendChild(top);
+      cell.appendChild(h('div',{style:`font-size:9px;font-weight:700;color:${cd.over?'#b83030':'#3a2818'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`},cd.spend?fmt(cd.spend):(cd.count?`${cd.count} meal${cd.count!==1?'s':''}`:'')));
+      cell.appendChild(h('div',{style:'font-size:7.5px;color:#8a7260;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},cd.count?`${cd.count} log${cd.count!==1?'s':''}${cd.spend?` · ${Math.round(cd.spend/(data.dailyBudget||1)*100)}%`:''}`:'No meals'));
+      const track=D('');track.style.cssText='height:5px;background:#ede6dc;border-radius:3px;overflow:hidden;margin-top:auto';
+      const fill=D('');fill.style.cssText=`height:100%;width:${Math.min(100,cd.spend/maxSpend*100).toFixed(1)}%;background:${cd.over?'#d45c5c':'#2e6e4f'}`;track.appendChild(fill);cell.appendChild(track);
+      cal.appendChild(cell);
+    });
+    for(let i=0;i<padEnd;i++){const blank=D('');blank.style.cssText='min-height:64px;border-radius:7px;background:#faf6f1;border:1px solid transparent';cal.appendChild(blank);}
+    c.appendChild(cal);
+    const dayCard=D('card');dayCard.style.marginBottom='10px';dayCard.appendChild(DivHdr(`Meals on ${new Date((selectedDay?.ds||toStr())+'T12:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'})}`));
+    if(selectedItems.length){
+      selectedItems.forEach(item=>{
+        const row=D('row cr');row.style.cssText='border-bottom:1px solid #e2d9ce;gap:8px';
+        const left=D('');left.style.cssText='min-width:0;flex:1';
+        left.appendChild(h('div',{style:'font-size:12px;font-weight:700;color:#3a2818;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},item.note||item.source));
+        left.appendChild(h('div',{style:'font-size:10px;color:#8a7260;margin-top:1px'},item.source));
+        row.appendChild(left);
+        if(item.source!=='Home-cooked')row.appendChild(h('span',{cls:'sf',style:`font-size:13px;color:${item.amount?'#b83030':'#8a7260'};flex-shrink:0`},item.amount?fmt(item.amount):fmt(0)));
+        dayCard.appendChild(row);
+      });
+    }else{
+      const empty=D('empty');empty.style.cssText='padding:14px;color:#8a7260;font-size:12px;text-align:center';empty.textContent='No meal logs for this day.';dayCard.appendChild(empty);
+    }
+    c.appendChild(dayCard);
+    const legend=D('');legend.style.cssText='font-size:10px;color:#8a7260;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px';
+    legend.appendChild(h('span',{style:'color:#2e6e4f'},'■ Within budget'));
+    legend.appendChild(h('span',{style:'color:#d45c5c'},'■ Over budget'));
+    legend.appendChild(h('span',{style:'color:#8a7260'},`Daily budget ${fmt(data.dailyBudget)}`));
+    c.appendChild(legend);
+    c.appendChild(Btn('bp bfull','Close',()=>set({modal:null})));
+    return M('Meals Calendar',c);
+  }
+  if(S.modal==='electricityMonthChart'){
+    const data=S.data,readDay=meralcoReadDay(data),cycle=cycleForDate(S.chartCycleKey||toStr(),readDay);
+    const chart=electricityDailyChart(cycle,data,'cycle'),maxCost=Math.max(...chart.map(x=>x.cost),1);
+    const totalCost=chart.reduce((s,x)=>s+x.cost,0),totalKwh=chart.reduce((s,x)=>s+x.kwh,0),meralcoKwh=meralcoKwhForCycle(cycle,data);
+    const c=D('');
+    const nav=D('row');nav.style.cssText='gap:8px;margin-bottom:9px';
+    const prev=Btn('bgsm','<',()=>set({chartCycleKey:shiftCycleKey(cycle.key,-1,readDay)}));prev.style.width='36px';
+    const next=Btn('bgsm','>',()=>set({chartCycleKey:shiftCycleKey(cycle.key,1,readDay)}));next.style.width='36px';
+    nav.appendChild(prev);nav.appendChild(h('div',{cls:'sf',style:'font-size:14px;flex:1;text-align:center;color:#3a2818'},cycleLabel(cycle)));nav.appendChild(next);c.appendChild(nav);
+    c.appendChild(h('div',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},`${cycleLabel(cycle)} · ${fmt2(totalCost)} · ${(meralcoKwh||totalKwh).toFixed(2)} kWh${meralcoKwh?' Meralco':' estimated'}`));
+    const cal=D('');cal.style.cssText='display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:10px';
+    ['S','M','T','W','T','F','S'].forEach(d=>cal.appendChild(h('div',{style:'font-size:9px;color:#8a7260;font-weight:800;text-align:center;padding-bottom:2px'},d)));
+    const padStart=cycle.start.getDay(),padEnd=(7-((padStart+chart.length)%7))%7;
+    for(let i=0;i<padStart;i++){const blank=D('');blank.style.cssText='min-height:68px;border-radius:7px;background:#faf6f1;border:1px solid transparent';cal.appendChild(blank);}
+    chart.forEach(cd=>{
+      const isT=cd.ds===toStr(),dt=dtOf(cd.ds),intensity=Math.min(1,cd.cost/maxCost),cell=D('');
+      cell.style.cssText=`min-height:68px;border:1px solid ${isT?'#b8720c':'#e2d9ce'};background:${cd.cost>0?`rgba(27,77,53,${0.04+intensity*.08})`:'#fff'};border-radius:7px;padding:5px 4px;display:flex;flex-direction:column;gap:3px;overflow:hidden`;
+      const top=D('row');top.style.cssText='align-items:flex-start;gap:2px';
+      top.appendChild(h('span',{style:`font-size:11px;font-weight:800;color:${isT?'#b8720c':'#3a2818'}`},String(dt.getDate())));
+      top.appendChild(h('span',{style:'font-size:7px;color:#8a7260;white-space:nowrap'},dt.toLocaleDateString('en-PH',{month:'short'})));
+      cell.appendChild(top);
+      cell.appendChild(h('div',{style:'font-size:9px;font-weight:700;color:#3a2818;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},cd.meralcoDailyKwh?`${cd.kwh.toFixed(1)} kWh`:fmt2(cd.cost)));
+      cell.appendChild(h('div',{style:'font-size:7.5px;color:#8a7260;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},cd.meralcoDailyKwh?fmt2(cd.cost):`${cd.kwh.toFixed(2)} kWh`));
+      const strip=D('');strip.style.cssText='height:5px;background:#ede6dc;border-radius:3px;overflow:hidden;display:flex;margin-top:auto';
+      const total=Math.max(cd.airCost+cd.tvCost+cd.applianceCost,0);
+      if(total>0){
+        const airSeg=D('');airSeg.style.cssText=`width:${(cd.airCost/total*100).toFixed(1)}%;background:#b8720c`;strip.appendChild(airSeg);
+        const tvSeg=D('');tvSeg.style.cssText=`width:${(cd.tvCost/total*100).toFixed(1)}%;background:#2e6e4f`;strip.appendChild(tvSeg);
+        const apSeg=D('');apSeg.style.cssText=`width:${(cd.applianceCost/total*100).toFixed(1)}%;background:#1a56c4`;strip.appendChild(apSeg);
+      }
+      cell.appendChild(strip);cal.appendChild(cell);
+    });
+    for(let i=0;i<padEnd;i++){const blank=D('');blank.style.cssText='min-height:68px;border-radius:7px;background:#faf6f1;border:1px solid transparent';cal.appendChild(blank);}
+    c.appendChild(cal);
+    const legend=D('');legend.style.cssText='font-size:10px;color:#8a7260;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px';
+    legend.appendChild(h('span',{},'■ Aircon'));legend.lastChild.style.color='#b8720c';
+    legend.appendChild(h('span',{},'■ TV'));legend.lastChild.style.color='#2e6e4f';
+    legend.appendChild(h('span',{},'■ Appliances'));legend.lastChild.style.color='#1a56c4';
+    legend.appendChild(h('span',{style:'color:#8a7260'},meralcoKwh?'Top labels show kWh/day':'Top labels show cost/day'));
+    c.appendChild(legend);
+    c.appendChild(Btn('bp bfull','Close',()=>set({modal:null})));
+    return M('Full Month Chart',c);
+  }
   if(S.modal==='addTx'){
     const c=D('');
-    const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 150',value:S.txF.amount});ai.oninput=e=>S.txF.amount=e.target.value;setTimeout(()=>ai.focus(),50);
-    c.appendChild(Fg('Subtotal (₱)',ai));
-    const dii=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:S.txF.discount});dii.oninput=e=>S.txF.discount=e.target.value;c.appendChild(Fg('Discount (₱)',dii));
-    c.appendChild(Fg('Source',Sel(S.txF.source,foodSources(),v=>{S.txF.source=v;render();})));
+    const isHomeCooked=S.txF.source==='Home-cooked';
+    if(!isHomeCooked){
+      const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'e.g. 150',value:S.txF.amount});ai.oninput=e=>S.txF.amount=e.target.value;setTimeout(()=>ai.focus(),50);
+      c.appendChild(Fg('Subtotal (₱)',ai));
+      const dii=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:S.txF.discount});dii.oninput=e=>S.txF.discount=e.target.value;c.appendChild(Fg('Discount (₱)',dii));
+    }
+    c.appendChild(Fg('Source',Sel(S.txF.source,foodSources(),v=>{S.txF.source=v;if(v==='Home-cooked'){S.txF.amount='';S.txF.discount='';}render();})));
     const isGroceries=S.txF.source==='Groceries';
-    const ni=Inp('',{type:'text',placeholder:isGroceries?'e.g. Eggs, bread, chips':'e.g. Pork sinigang',value:S.txF.note});ni.oninput=e=>S.txF.note=e.target.value;c.appendChild(Fg(isGroceries?'Pantry Item Name':'Notes (optional)',ni));
+    const ni=Inp('',{type:'text',placeholder:isGroceries?'e.g. Eggs, bread, chips':isHomeCooked?'e.g. Pork sinigang, rice':'e.g. Pork sinigang',value:S.txF.note});ni.oninput=e=>S.txF.note=e.target.value;c.appendChild(Fg(isGroceries?'Pantry Item Name':isHomeCooked?'What did you eat?':'Notes (optional)',ni,isHomeCooked?'Required for no-expense meal logs.':''));
     if(isGroceries){
       const g2=D('g2');
       const qfg=D('fg');qfg.appendChild(h('label',{cls:'fl'},'Qty'));const qi=Inp('',{type:'number',inputmode:'decimal',value:S.txF.qty||'1'});qi.oninput=e=>S.txF.qty=e.target.value;qfg.appendChild(qi);g2.appendChild(qfg);
@@ -1909,7 +2262,7 @@ function renderModal(){
     const otFg=D('fg');otFg.appendChild(h('label',{cls:'fl'},'Outdoor Temp (C)'));const oti=Inp('',{type:'number',inputmode:'decimal',value:S.airconF.outdoorTemp||''});oti.oninput=e=>S.airconF.outdoorTemp=e.target.value;otFg.appendChild(oti);wg.appendChild(otFg);
     const ohFg=D('fg');ohFg.appendChild(h('label',{cls:'fl'},'Humidity %'));const ohi=Inp('',{type:'number',inputmode:'decimal',value:S.airconF.outdoorHumidity||''});ohi.oninput=e=>S.airconF.outdoorHumidity=e.target.value;ohFg.appendChild(ohi);wg.appendChild(ohFg);c.appendChild(wg);
     const ofi=Inp('',{type:'number',inputmode:'decimal',value:S.airconF.outdoorFeels||''});ofi.oninput=e=>S.airconF.outdoorFeels=e.target.value;c.appendChild(Fg('Feels Like (C)',ofi,'Outdoor temp affects running kWh lightly. Values auto-fill from Open-Meteo when available.'));
-    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},'Uses your editable config rates. After the first 60 mins, the estimate switches by mode and day/night time.'));
+    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},`Uses your editable config rates. After the first ${durationLabel(60)}, the estimate switches by mode and day/night time.`));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';const sa=Btn('bp','Log Usage',addAircon);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Log Aircon Usage',c);
   }
   if(S.modal==='addTv'){
@@ -1933,12 +2286,21 @@ function renderModal(){
     }
     const selected=sessionApps.find(a=>a.id===S.applianceSessionF.applianceId)||sessionApps[0];
     if(!S.applianceSessionF.applianceId)S.applianceSessionF.applianceId=selected.id;
-    c.appendChild(Fg('Appliance',Sel(S.applianceSessionF.applianceId,sessionApps.map(a=>a.id),v=>{const ap=sessionApps.find(a=>a.id===v);S.applianceSessionF.applianceId=v;S.applianceSessionF.minutes=ap?.sessionMinutes?String(ap.sessionMinutes):S.applianceSessionF.minutes;render();})));
+    c.appendChild(Fg('Appliance',Sel(S.applianceSessionF.applianceId,sessionApps.map(a=>a.id),v=>{
+      const ap=sessionApps.find(a=>a.id===v),start=S.applianceSessionF.start||timeOf(new Date()),mins=parseFloat(ap?.sessionMinutes)||60;
+      S.applianceSessionF.applianceId=v;S.applianceSessionF.start=start;S.applianceSessionF.end=timePlus(start,mins);S.applianceSessionF.minutes=String(mins);render();
+    })));
     c.lastChild.querySelector('select').querySelectorAll('option').forEach(op=>{const ap=sessionApps.find(a=>a.id===op.value);if(ap)op.textContent=ap.name;});
-    const mi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',placeholder:'e.g. 30',value:S.applianceSessionF.minutes||selected.sessionMinutes||''});mi.oninput=e=>S.applianceSessionF.minutes=e.target.value;c.appendChild(Fg('Minutes Used',mi,`${selected.qty||1}x ${selected.watts||0}W · default ${selected.sessionMinutes||60} min/session`));
     const di=Inp('',{type:'date',value:S.applianceSessionF.date});di.oninput=e=>S.applianceSessionF.date=e.target.value;c.appendChild(Fg('Date',di));
-    const est=applianceSessionEstimate(selected,parseFloat(S.applianceSessionF.minutes)||selected.sessionMinutes||0,S.data.meralcoRate);
-    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},`Estimated session: ${est.kwh.toFixed(3)} kWh · ${fmt2(est.cost)}.`));
+    if(!S.applianceSessionF.start)S.applianceSessionF.start=timeOf(new Date());
+    if(!S.applianceSessionF.end)S.applianceSessionF.end=timePlus(S.applianceSessionF.start,selected.sessionMinutes||60);
+    const g2=D('g2');
+    const sfg=D('fg');sfg.appendChild(h('label',{cls:'fl'},'Start Time'));sfg.appendChild(Time12Control(S.applianceSessionF.start,v=>S.applianceSessionF.start=v));g2.appendChild(sfg);
+    const efg=D('fg');efg.appendChild(h('label',{cls:'fl'},'End Time'));efg.appendChild(Time12Control(S.applianceSessionF.end,v=>S.applianceSessionF.end=v));g2.appendChild(efg);c.appendChild(g2);
+    const minutes=minutesBetween(S.applianceSessionF.start,S.applianceSessionF.end)||selected.sessionMinutes||0;
+    S.applianceSessionF.minutes=String(minutes);
+    const est=applianceSessionEstimate(selected,minutes,S.data.meralcoRate);
+    c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},`Estimated session: ${durationLabel(minutes)} · ${est.kwh.toFixed(3)} kWh · ${fmt2(est.cost)}. Default ${durationLabel(selected.sessionMinutes||60)}/session.`));
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';
     const st=Btn('bg','Start Timer',()=>{startActiveSession('appliance',{applianceId:selected.id});set({modal:null});});st.style.flex='1.4';
     const sa=Btn('bp','Log Session',addApplianceUsage);sa.style.flex='1.6';c.appendChild(Mr(ca,st,sa));return M('Log Appliance Session',c);
@@ -1954,7 +2316,7 @@ function renderModal(){
     const cb=h('input',{type:'checkbox',checked:S.applianceF.alwaysOn,style:'width:18px;height:18px'});cb.onchange=e=>{S.applianceF.alwaysOn=e.target.checked;render();};
     ar.appendChild(cb);ar.appendChild(h('span',{style:'font-size:12.5px;font-weight:700;color:#3a2818'},'Runs 24/7'));c.appendChild(ar);
     if(!S.applianceF.alwaysOn){
-      const sm=Inp('',{type:'number',inputmode:'decimal',step:'0.001',placeholder:'e.g. 30',value:S.applianceF.sessionMinutes});sm.oninput=e=>S.applianceF.sessionMinutes=e.target.value;c.appendChild(Fg('Default Minutes / Session',sm,'Used when logging kettle, chargers, lights, fan, or washing machine sessions.'));
+      const sm=Inp('',{type:'number',inputmode:'decimal',step:'0.001',placeholder:'e.g. 30',value:S.applianceF.sessionMinutes});sm.oninput=e=>S.applianceF.sessionMinutes=e.target.value;c.appendChild(Fg('Default Minutes / Session',sm,`Used when logging sessions. ${durationLabel(S.applianceF.sessionMinutes||60)} by default.`));
     }
     const nt=Inp('',{type:'text',placeholder:'Optional notes',value:S.applianceF.note});nt.oninput=e=>S.applianceF.note=e.target.value;c.appendChild(Fg('Notes',nt));
     c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},S.applianceF.alwaysOn?`24/7 appliances auto-compute monthly using ${fmt(S.data.meralcoRate)}/kWh.`:'Session appliances only count when you log a usage session.'));
@@ -1976,20 +2338,6 @@ function renderModal(){
     const rf=Btn('bg','Refresh Weather',()=>updateWeather(true));rf.style.flex='1.2';
     const ca=Btn('bg','Cancel',()=>set({modal:null}));ca.style.flex='1';
     const sa=Btn('bp','Save',saveSettings);sa.style.flex='1.6';c.appendChild(Mr(ca,rf,sa));return M('Settings',c);
-  }
-  if(S.modal==='listsDefaults'){
-    const c=D(''),f=S.listsF;
-    const g2=D('g2');
-    const db=Inp('',{type:'number',inputmode:'decimal',value:f.dailyBudget});db.oninput=e=>f.dailyBudget=e.target.value;g2.appendChild(Fg('Daily Meals Budget',db));
-    const gb=Inp('',{type:'number',inputmode:'decimal',value:f.groceryBudget});gb.oninput=e=>f.groceryBudget=e.target.value;g2.appendChild(Fg('Monthly Grocery Budget',gb));
-    c.appendChild(g2);
-    const ta=(key,label,sub)=>{const el=h('textarea',{cls:'inp',rows:'5',style:'resize:vertical;line-height:1.4',value:f[key]||''});el.value=f[key]||'';el.oninput=e=>f[key]=e.target.value;c.appendChild(Fg(label,el,sub||'One label per line. Delete a line to remove it.'));};
-    ta('foodSources','Food Sources','Keep Groceries if you want food entries to add pantry stock.');
-    ta('homeCategories','Home Categories');
-    ta('homeStores','Home Stores');
-    ta('applianceCategories','Appliance Categories');
-    const ca=Btn('bg','Cancel',()=>set({modal:'settings'}));ca.style.flex='1';
-    const sa=Btn('bp','Save',saveListsDefaults);sa.style.flex='2';c.appendChild(Mr(ca,sa));return M('Lists & Defaults',c);
   }
   if(S.modal==='airSet'){
     const c=D('');
@@ -2059,10 +2407,13 @@ function renderModal(){
     const c=D('');
     if(t==='food'){
       if(dr.grossAmount===undefined)dr.grossAmount=dr.amount||0;if(dr.discount===undefined)dr.discount=0;
-      const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'Subtotal',value:dr.grossAmount});ai.oninput=e=>dr.grossAmount=e.target.value;setTimeout(()=>ai.focus(),50);c.appendChild(Fg('Subtotal (₱)',ai));
-      const dii=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:dr.discount||''});dii.oninput=e=>dr.discount=e.target.value;c.appendChild(Fg('Discount (₱)',dii));
-      c.appendChild(Fg('Source',Sel(dr.source,foodSources(),v=>{dr.source=v;})));
-      const ni=Inp('',{type:'text',placeholder:'Notes',value:dr.note||''});ni.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',ni));
+      const isHomeCooked=dr.source==='Home-cooked';
+      if(!isHomeCooked){
+        const ai=Inp('',{type:'number',inputmode:'decimal',placeholder:'Subtotal',value:dr.grossAmount});ai.oninput=e=>dr.grossAmount=e.target.value;setTimeout(()=>ai.focus(),50);c.appendChild(Fg('Subtotal (₱)',ai));
+        const dii=Inp('',{type:'number',inputmode:'decimal',placeholder:'Optional',value:dr.discount||''});dii.oninput=e=>dr.discount=e.target.value;c.appendChild(Fg('Discount (₱)',dii));
+      }
+      c.appendChild(Fg('Source',Sel(dr.source,foodSources(),v=>{dr.source=v;if(v==='Home-cooked'){dr.grossAmount=0;dr.discount=0;dr.amount=0;}render();})));
+      const ni=Inp('',{type:'text',placeholder:isHomeCooked?'What did you eat?':'Notes',value:dr.note||''});ni.oninput=e=>dr.note=e.target.value;c.appendChild(Fg(isHomeCooked?'What did you eat?':'Notes',ni));
       const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
     } else if(t==='home'){
       if(!dr.qty)dr.qty=1;if(!dr.unitPrice)dr.unitPrice=dr.grossAmount||dr.amount||0;if(!dr.unit)dr.unit='pcs';if(dr.discount===undefined)dr.discount=0;
@@ -2109,19 +2460,27 @@ function renderModal(){
       const acb=h('input',{type:'checkbox',checked:dr.alwaysOn,style:'width:18px;height:18px'});acb.onchange=e=>{dr.alwaysOn=e.target.checked;render();};
       ar.appendChild(acb);ar.appendChild(h('span',{style:'font-size:12.5px;font-weight:700;color:#3a2818'},'Runs 24/7'));c.appendChild(ar);
       if(!dr.alwaysOn){
-        const sm=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:dr.sessionMinutes||60});sm.oninput=e=>dr.sessionMinutes=e.target.value;c.appendChild(Fg('Default Minutes / Session',sm));
+        const sm=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:dr.sessionMinutes||60});sm.oninput=e=>dr.sessionMinutes=e.target.value;c.appendChild(Fg('Default Minutes / Session',sm,`${durationLabel(dr.sessionMinutes||60)} by default.`));
       }
       const nt=Inp('',{type:'text',value:dr.note||''});nt.oninput=e=>dr.note=e.target.value;c.appendChild(Fg('Notes',nt));
       const est=applianceMonthly(dr,S.data.meralcoRate);
-      const preview=dr.alwaysOn?`Current estimate: ${est.kwh.toFixed(2)} kWh/month · ${fmt2(est.cost)}/month.`:`Per-session estimate: ${applianceSessionEstimate(dr,dr.sessionMinutes||60,S.data.meralcoRate).kwh.toFixed(3)} kWh · ${fmt2(applianceSessionEstimate(dr,dr.sessionMinutes||60,S.data.meralcoRate).cost)}.`;
+      const preview=dr.alwaysOn?`Current estimate: ${est.kwh.toFixed(2)} kWh/month · ${fmt2(est.cost)}/month.`:`Per-session estimate (${durationLabel(dr.sessionMinutes||60)}): ${applianceSessionEstimate(dr,dr.sessionMinutes||60,S.data.meralcoRate).kwh.toFixed(3)} kWh · ${fmt2(applianceSessionEstimate(dr,dr.sessionMinutes||60,S.data.meralcoRate).cost)}.`;
       c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},preview));
     } else if(t==='applianceUsage'){
       const sessionApps=(S.data.appliances||[]).filter(a=>!a.alwaysOn);
       if(sessionApps.length){
-        c.appendChild(Fg('Appliance',Sel(dr.applianceId||sessionApps[0].id,sessionApps.map(a=>a.id),v=>{const ap=sessionApps.find(a=>a.id===v);dr.applianceId=v;dr.minutes=dr.minutes||ap?.sessionMinutes||60;render();})));
+        c.appendChild(Fg('Appliance',Sel(dr.applianceId||sessionApps[0].id,sessionApps.map(a=>a.id),v=>{
+          const ap=sessionApps.find(a=>a.id===v),start=dr.start||'19:00',mins=parseFloat(ap?.sessionMinutes)||parseFloat(dr.minutes)||60;
+          dr.applianceId=v;dr.start=start;dr.end=timePlus(start,mins);dr.minutes=mins;render();
+        })));
         c.lastChild.querySelector('select').querySelectorAll('option').forEach(op=>{const ap=sessionApps.find(a=>a.id===op.value);if(ap)op.textContent=ap.name;});
       }
-      const mi=Inp('',{type:'number',inputmode:'decimal',step:'0.001',value:dr.minutes});mi.oninput=e=>dr.minutes=e.target.value;setTimeout(()=>mi.focus(),50);c.appendChild(Fg('Minutes Used',mi));
+      if(!dr.start)dr.start='19:00';if(!dr.end)dr.end=timePlus(dr.start,parseFloat(dr.minutes)||60)||'20:00';
+      const g2=D('g2');
+      const sfg=D('fg');sfg.appendChild(h('label',{cls:'fl'},'Start Time'));sfg.appendChild(Time12Control(dr.start,v=>dr.start=v));g2.appendChild(sfg);
+      const efg=D('fg');efg.appendChild(h('label',{cls:'fl'},'End Time'));efg.appendChild(Time12Control(dr.end,v=>dr.end=v));g2.appendChild(efg);c.appendChild(g2);
+      const previewMinutes=minutesBetween(dr.start,dr.end)||parseFloat(dr.minutes)||0;
+      c.appendChild(h('p',{style:'font-size:11px;color:#8a7260;line-height:1.5;margin-bottom:10px'},`Duration: ${durationLabel(previewMinutes)}.`));
       const di=Inp('',{type:'date',value:dr.date});di.oninput=e=>dr.date=e.target.value;c.appendChild(Fg('Date',di));
     } else if(t==='price'){
       const ni=Inp('',{type:'text',value:dr.name||''});ni.oninput=e=>dr.name=e.target.value;setTimeout(()=>ni.focus(),50);c.appendChild(Fg('Item Name',ni));
@@ -2148,14 +2507,14 @@ function renderModal(){
 
 // ─── MAIN RENDER ─────────────────────────────────────────────
 const TABS=[{id:'dash',icon:'🏠',label:'Home'},{id:'food',icon:'🍽️',label:'Food'},{id:'home',icon:'🧴',label:'Home'},{id:'bills',icon:'📋',label:'Bills'},{id:'aircon',icon:'⚡',label:'Electric'},{id:'scan',icon:'📸',label:'Scan'}];
-const SCREEN_LABELS={dash:'Overview',food:'Food Expenses',home:'Home & Toiletries',bills:'Bills',prices:'Price Comparison',scan:'AI Scanner',reports:'📊 Reports',stocks:'📦 Pantry & Stocks',aircon:'Electricity Usage',appliances:'Appliance Manager'};
+const SCREEN_LABELS={dash:'Overview',food:'Food Expenses',home:'Home & Toiletries',bills:'Bills',prices:'Price Comparison',scan:'AI Scanner',reports:'📊 Reports',stocks:'📦 Pantry & Stocks',aircon:'Electricity Usage',appliances:'Appliance Manager',lists:'Lists & Defaults'};
 
 function render(){
   ensureLiveTick();
   openSw=null;
   const root=document.getElementById('app');root.innerHTML='';
   root.style.background='#f7f3ee';
-  const app=D('');app.style.cssText='max-width:480px;margin:0 auto;min-height:100vh;background:#f7f3ee;padding-bottom:72px';
+  const app=D('');app.style.cssText='max-width:480px;margin:0 auto;height:100vh;height:100dvh;background:#f7f3ee;display:flex;flex-direction:column;overflow:hidden';
   // Close swipe on tap outside
   app.addEventListener('touchstart',e=>{if(openSw&&!openSw.contains(e.target)){const c=openSw.querySelector('.swc');if(c){c.style.transition='transform .15s ease';c.style.transform='';}openSw=null;}},{passive:true});
   // Drawer
@@ -2176,6 +2535,7 @@ function render(){
   else if(S.tab==='scan')content=renderScan();
   else if(S.tab==='aircon')content=renderAircon();
   else if(S.tab==='appliances')content=renderAppliances();
+  else if(S.tab==='lists')content=renderListsDefaults();
   else if(S.tab==='reports')content=renderReports();
   else content=renderStocks();
   app.appendChild(content);
