@@ -1774,14 +1774,15 @@ function renderMeterAudit(){
   if(!S.auditOpen)return card;
   const cp=D('cp');
   const grid=D('g2 audit-grid');grid.style.marginBottom='8px';
-  const addField=(label,key,type='text',step='')=>{
-    const input=Inp('',{type,value:f[key]||'',...(step?{step}:{})});
+  const addField=(label,key,type='text',step='',placeholder='')=>{
+    const auditType=(type==='date'||type==='time')?'text':type;
+    const input=Inp('',{type:auditType,value:f[key]||'',...(step?{step}:{}),...(placeholder?{placeholder}:{})});
     input.oninput=e=>S.auditF[key]=e.target.value;
     grid.appendChild(Fg(label,input));
   };
-  addField('Start Date','startDate','date');addField('Start Time','startTime','time');
+  addField('Start Date','startDate','date','','YYYY-MM-DD');addField('Start Time','startTime','time','','HH:MM');
   addField('Start Reading','startRead','number','0.001');addField('End Reading','endRead','number','0.001');
-  addField('End Date','endDate','date');addField('End Time','endTime','time');
+  addField('End Date','endDate','date','','YYYY-MM-DD');addField('End Time','endTime','time','','HH:MM');
   cp.appendChild(grid);
   const run=Btn('bgfull','Run Audit',()=>set({auditF:{...S.auditF}}));run.style.marginBottom='8px';cp.appendChild(run);
   if(!a.valid){
