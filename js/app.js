@@ -1773,16 +1773,15 @@ function renderMeterAudit(){
   card.appendChild(hdr);
   if(!S.auditOpen)return card;
   const cp=D('cp');
-  const grid=D('g2 audit-grid');grid.style.marginBottom='8px';
-  const addField=(label,key,type='text',step='',placeholder='')=>{
-    const auditType=(type==='date'||type==='time')?'text':type;
-    const input=Inp('',{type:auditType,value:f[key]||'',...(step?{step}:{}),...(placeholder?{placeholder}:{})});
+  const grid=D('g2');grid.style.marginBottom='8px';
+  const addField=(label,key,type='text',step='')=>{
+    const input=Inp('',{type,value:f[key]||'',...(step?{step}:{})});
     input.oninput=e=>S.auditF[key]=e.target.value;
     grid.appendChild(Fg(label,input));
   };
-  addField('Start Date','startDate','date','','YYYY-MM-DD');addField('Start Time','startTime','time','','HH:MM');
+  addField('Start Date','startDate','date');addField('Start Time','startTime','time');
   addField('Start Reading','startRead','number','0.001');addField('End Reading','endRead','number','0.001');
-  addField('End Date','endDate','date','','YYYY-MM-DD');addField('End Time','endTime','time','','HH:MM');
+  addField('End Date','endDate','date');addField('End Time','endTime','time');
   cp.appendChild(grid);
   const run=Btn('bgfull','Run Audit',()=>set({auditF:{...S.auditF}}));run.style.marginBottom='8px';cp.appendChild(run);
   if(!a.valid){
@@ -2732,7 +2731,7 @@ function render(){
   openSw=null;
   const root=document.getElementById('app');root.innerHTML='';
   root.style.background='#f7f3ee';
-  const app=D('');app.style.cssText='width:100%;height:100%;background:#f7f3ee;display:flex;flex-direction:column;overflow:hidden';
+  const app=D('');app.style.cssText='max-width:480px;margin:0 auto;height:100vh;height:100dvh;background:#f7f3ee;display:flex;flex-direction:column;overflow:hidden';
   // Close swipe on tap outside
   app.addEventListener('touchstart',e=>{if(openSw&&!openSw.contains(e.target)){const c=openSw.querySelector('.swc');if(c){c.style.transition='transform .15s ease';c.style.transform='';}openSw=null;}},{passive:true});
   // Drawer
