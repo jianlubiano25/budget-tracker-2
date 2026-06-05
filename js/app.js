@@ -1885,9 +1885,14 @@ function renderMeterAudit(){
     input.oninput=e=>S.auditF[key]=e.target.value;
     grid.appendChild(Fg(label,input));
   };
-  addField('Start Date','startDate','date');addField('Start Time','startTime','time');
-  addField('Start Reading','startRead','number','0.001');addField('End Reading','endRead','number','0.001');
-  addField('End Date','endDate','date');addField('End Time','endTime','time');
+  // Grouped logically for 2-column grid
+  addField('Start Date','startDate','date');
+  addField('Start Time','startTime','time');
+  addField('End Date','endDate','date');
+  addField('End Time','endTime','time');
+  addField('Start Read','startRead','number','0.001');
+  addField('End Read','endRead','number','0.001');
+
   cp.appendChild(grid);
   const run=Btn('bgfull','Run Audit',()=>set({auditF:{...S.auditF}}));run.style.marginBottom='8px';cp.appendChild(run);
   if(!a.valid){

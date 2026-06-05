@@ -1,8 +1,8 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#f7f3ee;-webkit-font-smoothing:antialiased;touch-action:manipulation;overflow:hidden}
+html,body{height:100%;background:#fff;-webkit-font-smoothing:antialiased;touch-action:manipulation;overflow:hidden}
 body{font-family:'DM Sans',system-ui,sans-serif;color:#3a2818;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
 ::-webkit-scrollbar{display:none}
-input,select,button,textarea{font-family:inherit;min-width:0}
+input,select,button,textarea{font-family:inherit;min-width:0;max-width:100%}
 input:focus,select:focus{outline:2px solid #1b4d35;outline-offset:1px;border-radius:8px}
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:3px;background:#e2d9ce;outline:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#1b4d35;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25)}
@@ -68,8 +68,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .cp{padding:11px 13px}
 .cr{padding:7px 13px}
 .cg{background:linear-gradient(135deg,#1b4d35,#2a6645);border:none}
-.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
-.g2 .inp, .g2 .sel{padding:9px 4px;font-size:14px}
+.g2{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px}
+.g2 .fg{min-width:0}
+.g2 .inp, .g2 .sel{padding:9px 6px;font-size:13px;width:100%}
+/* Specific fix for iOS Date/Time overlapping */
+input[type="date"], input[type="time"] {
+  -webkit-appearance: none;
+  min-width: 0 !important;
+}
 .row{display:flex;justify-content:space-between;align-items:center}
 /* TYPOGRAPHY */
 .lbl{font-size:10px;font-weight:700;color:#8a7260;text-transform:uppercase;letter-spacing:.6px}
