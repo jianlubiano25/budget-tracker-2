@@ -1,5 +1,5 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#1b4d35;-webkit-font-smoothing:antialiased;touch-action:manipulation;overflow:hidden}
+html,body{height:100%;background:#f7f3ee;-webkit-font-smoothing:antialiased;touch-action:manipulation;overflow:hidden}
 body{font-family:'DM Sans',system-ui,sans-serif;color:#3a2818;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
 ::-webkit-scrollbar{display:none}
 input,select,button,textarea{font-family:inherit;min-width:0}
@@ -56,7 +56,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .hbl{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px}
 .hbv{font-family:'Lora',Georgia,serif;font-size:21px;font-weight:600;color:#fff}
 /* TAB BAR */
-.tabbar{display:flex;background:#fff;border-top:1px solid #e2d9ce;width:100%;z-index:30;padding-bottom:env(safe-area-inset-bottom,0px);flex-shrink:0}
+.tabbar{display:flex;background:#fff;border-top:1px solid #e2d9ce;width:100%;z-index:30;padding-bottom:env(safe-area-inset-bottom);flex-shrink:0}
 .tb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 1px 4px;background:none;border:none;border-top:2.5px solid transparent;cursor:pointer;color:#8a7260;gap:1px;transition:color .15s}
 .tb-on{border-top-color:#1b4d35;color:#1b4d35}
 .tb-ic{font-size:18px;line-height:1}
@@ -68,8 +68,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .cp{padding:11px 13px}
 .cr{padding:7px 13px}
 .cg{background:linear-gradient(135deg,#1b4d35,#2a6645);border:none}
-.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-.g2 .inp, .g2 .sel{padding-left:6px;padding-right:6px;font-size:15px}
+.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+.g2 .inp, .g2 .sel{padding:9px 4px;font-size:14px}
 .row{display:flex;justify-content:space-between;align-items:center}
 /* TYPOGRAPHY */
 .lbl{font-size:10px;font-weight:700;color:#8a7260;text-transform:uppercase;letter-spacing:.6px}

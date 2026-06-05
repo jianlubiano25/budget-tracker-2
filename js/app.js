@@ -2899,7 +2899,6 @@ function render(){
 
   // Tab bar (always visible)
   const tb=D('tabbar');
-  tb.style.paddingBottom = 'env(safe-area-inset-bottom)';
   TABS.forEach(t=>{
     const on=S.tab===t.id;
     const b=D('tb'+(on?' tb-on':''));
