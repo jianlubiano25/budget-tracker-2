@@ -14,6 +14,17 @@
 (function(){var c=document.createElement('canvas');c.width=c.height=180;var x=c.getContext('2d');x.fillStyle='#1b4d35';x.beginPath();if(x.roundRect)x.roundRect(0,0,180,180,36);else x.rect(0,0,180,180);x.fill();x.fillStyle='#fff';x.font='bold 96px Georgia';x.textAlign='center';x.textBaseline='middle';x.fillText('₱',90,94);var l=document.createElement('link');l.rel='apple-touch-icon';l.href=c.toDataURL();document.head.appendChild(l);})();
 </script>
 <link rel="stylesheet" href="styles.css"/>
+<style>
+  /* Ensure the navigation bar handles iPhone safe areas */
+  .tabbar {
+    padding-bottom: env(safe-area-inset-bottom) !important;
+
+  }
+  /* Optional: Prevent the header from being cut off by the notch */
+  .hdr {
+    padding-top: env(safe-area-inset-top) !important;
+  }
+</style>
 </head>
 <body>
 <div id="app"></div>
