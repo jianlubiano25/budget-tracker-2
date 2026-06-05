@@ -7,6 +7,31 @@ input:focus,select:focus{outline:2px solid #1b4d35;outline-offset:1px;border-rad
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:3px;background:#e2d9ce;outline:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#1b4d35;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 #app{max-width:480px;margin:0 auto;height:100vh;height:100dvh;background:#f7f3ee;overflow:hidden}
+.ipon-app{width:100%;max-width:inherit}
+/* ─── iPAD RESPONSIVE ───────────────────────────────────────── */
+@media (min-width:768px){
+  #app{max-width:720px}
+  .mbox{max-width:720px}
+  .setup{max-width:720px}
+  .htitle{font-size:22px}
+  .hbv{font-size:24px}
+  .sec{padding:16px 18px}
+  .card{border-radius:14px;margin-bottom:11px}
+  .tb-ic{font-size:22px}
+  .tb-lb{font-size:9.5px}
+  .tb{padding:8px 2px 6px}
+  .inp,.sel{font-size:15px}
+}
+@media (min-width:1024px){
+  #app{max-width:min(1060px,100%)}
+  .mbox{max-width:680px}
+  .htitle{font-size:24px}
+  .hbv{font-size:26px}
+  .sec{padding:18px 24px}
+  .tb{padding:10px 4px 8px}
+  .tb-ic{font-size:24px}
+  .tb-lb{font-size:10px}
+}
 /* SETUP */
 .setup{min-height:100vh;background:linear-gradient(160deg,#1b4d35,#2a6645 55%,#1a3d28);display:flex;flex-direction:column;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 44px) 24px 44px;max-width:480px;margin:0 auto}
 .s-logo{width:76px;height:76px;background:rgba(255,255,255,.13);border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:42px;margin-bottom:16px;border:1.5px solid rgba(255,255,255,.18)}
@@ -56,7 +81,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .hbl{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px}
 .hbv{font-family:'Lora',Georgia,serif;font-size:21px;font-weight:600;color:#fff}
 /* TAB BAR */
-.tabbar{display:flex;background:#fff;border-top:1px solid #e2d9ce;width:100%;z-index:30;padding-bottom:env(safe-area-inset-bottom);flex-shrink:0}
+.tabbar{display:flex;background:#fff;border-top:1px solid #e2d9ce;width:100%;z-index:30;padding-bottom:max(env(safe-area-inset-bottom,0px),0px);flex-shrink:0;/* Extend background behind the home indicator */}
 .tb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 1px 4px;background:none;border:none;border-top:2.5px solid transparent;cursor:pointer;color:#8a7260;gap:1px;transition:color .15s}
 .tb-on{border-top-color:#1b4d35;color:#1b4d35}
 .tb-ic{font-size:18px;line-height:1}
@@ -75,6 +100,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 input[type="date"], input[type="time"] {
   -webkit-appearance: none;
   min-width: 0 !important;
+  font-size: 13px !important;   /* prevents Safari native picker from overflowing */
+  padding-left: 7px !important;
+  padding-right: 4px !important;
+  letter-spacing: -0.2px;
+}
+/* Inside a 2-col grid, constrain date/time even harder */
+.g2 input[type="date"], .g2 input[type="time"] {
+  font-size: 12px !important;
+  padding: 8px 4px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .row{display:flex;justify-content:space-between;align-items:center}
 /* TYPOGRAPHY */
